@@ -1,0 +1,147 @@
+version: "3.9"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Default Profile: Core Web API & Database & Queue
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: errand_agent_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/errand_agent
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+      - LOG_JSON=true
+      - ENABLE_METRICS=true
+      - TRACE_DIR=/app/artifacts/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - trace_data:/app/artifacts/traces
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: errand_agent_worker
+    restart: unless-stopped
+    entrypoint: ["python3", "-m", "errand_agent.worker"]
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/errand_agent
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: errand_agent_postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=errand_agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d errand_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: errand_agent_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Profile: obs (Observability stack with Prometheus & Grafana)
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: errand_agent_prometheus
+    profiles: ["obs"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/obs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: errand_agent_grafana
+    profiles: ["obs"]
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
+
+  # ---------------------------------------------------------------------------
+  # Profile: langfuse (Langfuse telemetry server)
+  # ---------------------------------------------------------------------------
+  langfuse-server:
+    image: ghcr.io/langfuse/langfuse:2
+    container_name: errand_agent_langfuse
+    profiles: ["langfuse"]
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/langfuse
+      - NEXTAUTH_SECRET=supersecretsecretsecret
+      - SALT=supersecretsalt
+      - NEXTAUTH_URL=http://localhost:3000
+      - TELEMETRY_ENABLED=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Profile: loadtest (Stress testing container)
+  # ---------------------------------------------------------------------------
+  locust:
+    image: locustio/locust:2.24.0
+    container_name: errand_agent_locust
+    profiles: ["loadtest"]
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./stress:/mnt/locust
+    command: -f /mnt/locust/locustfile.py --host http://api:8000
+
+volumes:
+  pg_data:
+  redis_data:
+  trace_data:

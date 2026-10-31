@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -18,6 +18,11 @@ from errand_agent.agent.budgets import BudgetConfig
 from errand_agent.agent.orchestrator import ErrandOrchestrator
 from errand_agent.mocks.provider import MockProviderService
 from errand_agent.model.scripted import ScriptedModel
+from errand_agent.obs.metrics import (
+    TURN_LATENCY_SECONDS,
+    TURNS_TOTAL,
+    get_metrics_payload,
+)
 from errand_agent.policy.gate import PolicyGate
 from errand_agent.store.base import Base, create_engine_and_sessionmaker
 from errand_agent.store.repositories import (
@@ -123,12 +128,22 @@ async def readyz(session: AsyncSession = Depends(get_session)) -> dict[str, str]
         ) from exc
 
 
+@app.get("/metrics")
+async def metrics() -> Response:
+    """Prometheus telemetry scrape endpoint."""
+    content, content_type = get_metrics_payload()
+    return Response(content=content, media_type=content_type)
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(
     payload: ChatRequest,
     session: AsyncSession = Depends(get_session),
 ) -> ChatResponse:
     """Chat with the Errand Agent."""
+    import time
+
+    start_time = time.perf_counter()
     if not app_context.provider_client or not app_context.trace_sink or not app_context.clock:
         raise HTTPException(status_code=500, detail="Services uninitialized")
 
@@ -168,6 +183,10 @@ async def chat(
         user_id=payload.user_id,
         message=payload.message,
     )
+
+    duration = time.perf_counter() - start_time
+    TURN_LATENCY_SECONDS.observe(duration)
+    TURNS_TOTAL.labels(phase=result.phase.value, intent="errand").inc()
 
     return ChatResponse(
         reply=result.reply,
