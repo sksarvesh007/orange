@@ -159,7 +159,12 @@ VALID_TRANSITIONS: dict[Phase, set[Phase]] = {
         Phase.FAILED,
         Phase.NEEDS_HUMAN,
     },
-    Phase.DONE: set(),
+    Phase.DONE: {
+        Phase.AWAITING_APPROVAL,
+        Phase.SEARCHING,
+        Phase.PRESENTING,
+        Phase.DONE,
+    },
     Phase.CANCELLED_BY_USER: set(),
     Phase.LIMIT_EXHAUSTED: set(),
     Phase.NEEDS_HUMAN: set(),

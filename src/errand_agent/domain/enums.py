@@ -56,6 +56,7 @@ class BookingStatus(str, Enum):
     BOOKED = "BOOKED"
     FAILED = "FAILED"
     TIMEOUT = "TIMEOUT"
+    CANCELLED = "CANCELLED"
 
 
 class Provenance(str, Enum):

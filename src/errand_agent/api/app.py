@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -17,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from errand_agent.agent.budgets import BudgetConfig
 from errand_agent.agent.orchestrator import ErrandOrchestrator
+from errand_agent.domain.enums import BookingStatus, Phase
+from errand_agent.domain.state import HoldInfo, WorkflowState
 from errand_agent.mocks.provider import MockProviderService
 from errand_agent.model.llm import LLMClient
 from errand_agent.model.scripted import ScriptedModel
@@ -38,7 +41,7 @@ from errand_agent.store.repositories import (
 )
 from errand_agent.tools.provider_client import ProviderClient
 from errand_agent.trace.langfuse import LangfuseSink
-from errand_agent.trace.sink import CompositeSink, JsonlSink, TraceSink
+from errand_agent.trace.sink import CompositeSink, JsonlSink, NullSink, TraceSink
 from errand_agent.utils.clock import Clock, SystemClock
 
 
@@ -55,6 +58,21 @@ class ChatResponse(BaseModel):
     turn_count: int
     is_terminal: bool
     verified_booking_id: str | None = None
+
+
+class CancellationWebhookRequest(BaseModel):
+    booking_id: str
+    session_id: str | None = None
+    reason: str = "Provider unavailable"
+
+
+class CancellationWebhookResponse(BaseModel):
+    status: str
+    session_id: str
+    alert_message: str
+    held_alternative: dict[str, Any] | None = None
+    confirmation_card: dict[str, Any] | None = None
+    requires_approval: bool = True
 
 
 # Global context containers
@@ -210,6 +228,124 @@ async def chat(
         turn_count=result.turn_count,
         is_terminal=result.is_terminal,
         verified_booking_id=result.verified_booking_id,
+    )
+
+
+@app.post("/webhook/provider-cancellation", response_model=CancellationWebhookResponse)
+async def handle_provider_cancellation(
+    payload: CancellationWebhookRequest,
+    session: AsyncSession = Depends(get_session),
+) -> CancellationWebhookResponse:
+    """Section 6: Proactive provider cancellation webhook.
+
+    Alerts user, finds alternative provider/slot, acquires hold, and issues
+    confirmation card without auto-booking.
+    """
+    if not app_context.provider_client or not app_context.clock:
+        raise HTTPException(status_code=500, detail="Services uninitialized")
+
+    ledger_repo = BookingLedgerRepository(session)
+    state_repo = WorkflowStateRepository(session)
+    approval_repo = ApprovalRepository(session)
+
+    attempt = await ledger_repo.get_by_booking_id(payload.booking_id, session_id=payload.session_id)
+    if not attempt:
+        raise HTTPException(status_code=404, detail=f"Booking {payload.booking_id} not found")
+
+    # 1. Update ledger status
+    await ledger_repo.update_status(
+        attempt.idempotency_key,
+        status=BookingStatus.CANCELLED,
+        error=f"Cancelled by provider: {payload.reason}",
+    )
+
+    # 2. Retrieve workflow state
+    state = await state_repo.get(attempt.session_id)
+    if not state:
+        state = WorkflowState(session_id=attempt.session_id, user_id=attempt.user_id)
+
+    service = state.get_slot_value("service") or "plumber"
+    area = state.get_slot_value("area") or "Indiranagar"
+    max_price = state.get_slot_value("budget")
+
+    # 3. Search alternative providers
+    providers = await app_context.provider_client.search_providers(service=service, area=area)
+
+    # Filter out current cancelled slot and over-budget providers
+    alt_candidate = None
+    for p in providers:
+        if max_price and p.get("price", 0) > max_price:
+            continue
+        available_slots = [s for s in p.get("slots", []) if s != attempt.slot]
+        if available_slots:
+            alt_candidate = (p, available_slots[0])
+            break
+
+    if not alt_candidate:
+        alert_msg = (
+            f"Your booking {payload.booking_id} was cancelled by the provider ({payload.reason}). "
+            "No immediate alternative within budget was found. How would you like to proceed?"
+        )
+        state.transition_to(Phase.PRESENTING, reason="Provider cancelled; no immediate alternative")
+        await state_repo.save(state)
+        return CancellationWebhookResponse(
+            status="cancelled_no_alternative",
+            session_id=attempt.session_id,
+            alert_message=alert_msg,
+            held_alternative=None,
+            requires_approval=False,
+        )
+
+    alt_prov, alt_slot = alt_candidate
+
+    # 4. Acquire hold on alternative slot
+    hold_res = await app_context.provider_client.hold_slot(alt_prov["provider_id"], alt_slot)
+
+    # 5. Update state and build confirmation card
+    state.selected_provider_id = alt_prov["provider_id"]
+    state.selected_provider_name = alt_prov.get("name", "Alternative Provider")
+    state.selected_slot = alt_slot
+    state.price = hold_res["quoted_price"]
+    state.hold = HoldInfo(
+        hold_id=hold_res["hold_id"],
+        provider_id=alt_prov["provider_id"],
+        slot=alt_slot,
+        expires_at=datetime.fromisoformat(hold_res["expires_at"]),
+        quoted_price=hold_res["quoted_price"],
+    )
+    state.transition_to(
+        Phase.AWAITING_APPROVAL,
+        reason="Alternative held following provider cancellation",
+    )
+
+    gate = PolicyGate(
+        approval_repo=approval_repo,
+        ledger_repo=ledger_repo,
+        trace_sink=app_context.trace_sink or NullSink(),
+        clock=app_context.clock,
+    )
+    card = gate.build_confirmation_card(state)
+    await state_repo.save(state)
+
+    alert_msg = (
+        f"Alert: Your booking {payload.booking_id} was cancelled by the provider ({payload.reason}). "
+        f"I have temporarily held an alternative with {state.selected_provider_name} for {state.selected_slot} at ₹{state.price:,}. "
+        f"Reply YES to confirm or NO to look for other options."
+    )
+
+    return CancellationWebhookResponse(
+        status="alternative_held_awaiting_approval",
+        session_id=attempt.session_id,
+        alert_message=alert_msg,
+        held_alternative={
+            "provider_id": alt_prov["provider_id"],
+            "provider_name": state.selected_provider_name,
+            "slot": alt_slot,
+            "price": state.price,
+            "hold_id": hold_res["hold_id"],
+        },
+        confirmation_card=card.model_dump(),
+        requires_approval=True,
     )
 
 

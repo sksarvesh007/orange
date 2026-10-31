@@ -333,6 +333,34 @@ class BookingLedgerRepository:
             updated_at=model.updated_at,
         )
 
+    async def get_by_booking_id(
+        self, booking_id: str, session_id: str | None = None
+    ) -> BookingAttemptRecord | None:
+        stmt = select(BookingAttemptModel).where(BookingAttemptModel.booking_id == booking_id)
+        if session_id:
+            stmt = stmt.where(BookingAttemptModel.session_id == session_id)
+        stmt = stmt.order_by(BookingAttemptModel.created_at.desc())
+        res = await self.session.execute(stmt)
+        model = res.scalars().first()
+        if not model:
+            return None
+        return BookingAttemptRecord(
+            idempotency_key=model.idempotency_key,
+            action_hash=model.action_hash,
+            user_id=model.user_id,
+            session_id=model.session_id,
+            action_type=ActionType(model.action_type),
+            provider_id=model.provider_id,
+            slot=model.slot,
+            hold_id=model.hold_id,
+            booking_id=model.booking_id,
+            status=BookingStatus(model.status),
+            attempt_count=model.attempt_count,
+            last_error=model.last_error,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+        )
+
     async def get_by_action_hash(self, action_hash: str) -> list[BookingAttemptRecord]:
         stmt = select(BookingAttemptModel).where(BookingAttemptModel.action_hash == action_hash)
         res = await self.session.execute(stmt)
