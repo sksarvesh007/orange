@@ -11,8 +11,12 @@ import structlog
 
 # Contextual variables for cross-cutting request / run tracing
 ctx_run_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("ctx_run_id", default=None)
-ctx_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("ctx_session_id", default=None)
-ctx_user_id_hash: contextvars.ContextVar[str | None] = contextvars.ContextVar("ctx_user_id_hash", default=None)
+ctx_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "ctx_session_id", default=None
+)
+ctx_user_id_hash: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "ctx_user_id_hash", default=None
+)
 
 
 def bind_context(

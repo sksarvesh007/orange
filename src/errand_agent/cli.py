@@ -22,8 +22,18 @@ def cli() -> None:
 @cli.command("chat")
 @click.option("--user-id", default="cli_user", help="User ID for the session")
 @click.option("--session-id", default=None, help="Existing session ID to resume")
-def chat(user_id: str, session_id: str | None) -> None:
+@click.option(
+    "--use-llm",
+    is_flag=True,
+    default=False,
+    help="Use external LLM instead of default deterministic scripted model",
+)
+def chat(user_id: str, session_id: str | None, use_llm: bool) -> None:
     """Start an interactive chat session with the Errand Agent."""
+    import os
+
+    if use_llm:
+        os.environ["USE_LLM"] = "true"
     sid = session_id or f"sess_{uuid.uuid4().hex[:8]}"
     click.echo(
         click.style(

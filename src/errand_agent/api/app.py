@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from errand_agent.agent.budgets import BudgetConfig
 from errand_agent.agent.orchestrator import ErrandOrchestrator
 from errand_agent.mocks.provider import MockProviderService
+from errand_agent.model.llm import LLMClient
 from errand_agent.model.scripted import ScriptedModel
 from errand_agent.obs.metrics import (
     TURN_LATENCY_SECONDS,
@@ -178,7 +180,9 @@ async def chat(
         policy_gate=gate,
         provider_client=app_context.provider_client,
         trace_sink=app_context.trace_sink,
-        model_client=ScriptedModel(),
+        model_client=(
+            LLMClient() if os.getenv("USE_LLM", "").lower() in ("true", "1") else ScriptedModel()
+        ),
         budget_config=BudgetConfig(),
         clock=app_context.clock,
     )
