@@ -37,7 +37,8 @@ from errand_agent.store.repositories import (
     WorkflowStateRepository,
 )
 from errand_agent.tools.provider_client import ProviderClient
-from errand_agent.trace.sink import JsonlSink, TraceSink
+from errand_agent.trace.langfuse import LangfuseSink
+from errand_agent.trace.sink import CompositeSink, JsonlSink, TraceSink
 from errand_agent.utils.clock import Clock, SystemClock
 
 
@@ -89,7 +90,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app_context.mock_provider = MockProviderService(clock=app_context.clock)
     app_context.provider_client = ProviderClient(app_context.mock_provider, clock=app_context.clock)
     app_context.trace_dir = Path("artifacts/traces")
-    app_context.trace_sink = JsonlSink(trace_dir=app_context.trace_dir)
+    jsonl_sink = JsonlSink(trace_dir=app_context.trace_dir)
+    langfuse_sink = LangfuseSink()
+    if langfuse_sink.enabled:
+        app_context.trace_sink = CompositeSink([jsonl_sink, langfuse_sink])
+    else:
+        app_context.trace_sink = jsonl_sink
 
     yield
 

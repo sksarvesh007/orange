@@ -30,11 +30,17 @@ SENSITIVE_KEY_NAMES = {
 }
 
 
+PHONE_PATTERN = re.compile(r"\b(?:\+?91|1)?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b")
+EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+
+
 def _redact_string(text: str) -> str:
-    """Scrub secrets from text."""
+    """Scrub secrets, emails, and phone numbers from text."""
     redacted = text
     for pattern in SECRET_PATTERNS:
         redacted = pattern.sub("[REDACTED_SECRET]", redacted)
+    redacted = EMAIL_PATTERN.sub("[REDACTED_EMAIL]", redacted)
+    redacted = PHONE_PATTERN.sub("[REDACTED_PHONE]", redacted)
     return redacted
 
 
