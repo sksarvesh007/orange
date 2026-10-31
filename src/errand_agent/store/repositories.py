@@ -166,6 +166,11 @@ class ApprovalRepository:
         model = res.scalar_one_or_none()
         if not model:
             return None
+        from errand_agent.utils.clock import ensure_utc
+
+        created_at = ensure_utc(model.created_at)
+        expires_at = ensure_utc(model.expires_at)
+        assert created_at is not None and expires_at is not None
         return ApprovalRecord(
             approval_id=model.approval_id,
             user_id=model.user_id,
@@ -178,15 +183,19 @@ class ApprovalRepository:
             new_slot=model.new_slot,
             hold_id=model.hold_id,
             action_hash=model.action_hash,
-            created_at=model.created_at,
-            expires_at=model.expires_at,
-            consumed_at=model.consumed_at,
-            voided_at=model.voided_at,
+            created_at=created_at,
+            expires_at=expires_at,
+            consumed_at=ensure_utc(model.consumed_at),
+            voided_at=ensure_utc(model.voided_at),
             void_reason=model.void_reason,
         )
 
-    async def find_active_by_hash(self, user_id: str, action_hash: str) -> ApprovalRecord | None:
-        now = datetime.now(timezone.utc)
+    async def find_active_by_hash(
+        self, user_id: str, action_hash: str, now: datetime | None = None
+    ) -> ApprovalRecord | None:
+        from errand_agent.utils.clock import ensure_utc
+
+        check_time = ensure_utc(now) or datetime.now(timezone.utc)
         stmt = (
             select(ApprovalModel)
             .where(
@@ -194,32 +203,35 @@ class ApprovalRepository:
                 ApprovalModel.action_hash == action_hash,
                 ApprovalModel.consumed_at.is_(None),
                 ApprovalModel.voided_at.is_(None),
-                ApprovalModel.expires_at > now,
             )
             .order_by(ApprovalModel.created_at.desc())
         )
         res = await self.session.execute(stmt)
-        model = res.scalars().first()
-        if not model:
-            return None
-        return ApprovalRecord(
-            approval_id=model.approval_id,
-            user_id=model.user_id,
-            session_id=model.session_id,
-            action_type=ActionType(model.action_type),
-            provider_id=model.provider_id,
-            slot=model.slot,
-            price=model.price,
-            booking_id=model.booking_id,
-            new_slot=model.new_slot,
-            hold_id=model.hold_id,
-            action_hash=model.action_hash,
-            created_at=model.created_at,
-            expires_at=model.expires_at,
-            consumed_at=model.consumed_at,
-            voided_at=model.voided_at,
-            void_reason=model.void_reason,
-        )
+        for model in res.scalars().all():
+            expires_at = ensure_utc(model.expires_at)
+            assert expires_at is not None
+            if expires_at > check_time:
+                created_at = ensure_utc(model.created_at)
+                assert created_at is not None
+                return ApprovalRecord(
+                    approval_id=model.approval_id,
+                    user_id=model.user_id,
+                    session_id=model.session_id,
+                    action_type=ActionType(model.action_type),
+                    provider_id=model.provider_id,
+                    slot=model.slot,
+                    price=model.price,
+                    booking_id=model.booking_id,
+                    new_slot=model.new_slot,
+                    hold_id=model.hold_id,
+                    action_hash=model.action_hash,
+                    created_at=created_at,
+                    expires_at=expires_at,
+                    consumed_at=ensure_utc(model.consumed_at),
+                    voided_at=ensure_utc(model.voided_at),
+                    void_reason=model.void_reason,
+                )
+        return None
 
     async def consume_atomically_with_booking_attempt(
         self,

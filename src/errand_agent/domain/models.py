@@ -64,15 +64,23 @@ class ApprovalRecord(BaseModel):
     voided_at: datetime | None = None
     void_reason: str | None = None
 
-    @property
-    def is_valid(self) -> bool:
-        """Check if approval is currently valid (unconsumed, unvoided, unexpired)."""
-        now = datetime.now(timezone.utc)
+    def is_valid_at(self, now: datetime | None = None) -> bool:
+        """Check if approval is valid at a given timestamp."""
+        from errand_agent.utils.clock import ensure_utc
+
+        check_time = ensure_utc(now) or datetime.now(timezone.utc)
+        exp = ensure_utc(self.expires_at)
+        assert exp is not None
         return (
             self.consumed_at is None
             and self.voided_at is None
-            and self.expires_at > now
+            and exp > check_time
         )
+
+    @property
+    def is_valid(self) -> bool:
+        """Check if approval is currently valid."""
+        return self.is_valid_at(None)
 
 
 class BookingAttemptRecord(BaseModel):
