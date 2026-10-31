@@ -28,20 +28,31 @@ def test_deterministic_confirmation_parser() -> None:
     assert parse_confirmation("proceed")[0] == ConfirmationDecision.AFFIRM
     assert parse_confirmation("approved")[0] == ConfirmationDecision.AFFIRM
     assert parse_confirmation("go ahead")[0] == ConfirmationDecision.AFFIRM
+    assert parse_confirmation("looks good")[0] == ConfirmationDecision.AFFIRM
+    assert parse_confirmation("that works")[0] == ConfirmationDecision.AFFIRM
+    assert parse_confirmation("yeah, go for it")[0] == ConfirmationDecision.AFFIRM
 
     # Denials
     assert parse_confirmation("no")[0] == ConfirmationDecision.DENY
     assert parse_confirmation("cancel this")[0] == ConfirmationDecision.DENY
     assert parse_confirmation("don't do that")[0] == ConfirmationDecision.DENY
     assert parse_confirmation("stop")[0] == ConfirmationDecision.DENY
+    assert parse_confirmation("not sure")[0] == ConfirmationDecision.DENY
+    assert parse_confirmation("do not proceed")[0] == ConfirmationDecision.DENY
 
     # Corrections
     decision, text = parse_confirmation("actually, make it Saturday afternoon")
     assert decision == ConfirmationDecision.CORRECTION
     assert "actually" in text
 
-    # Unknown / ambiguous
+    decision2, text2 = parse_confirmation("change to Thursday morning instead")
+    assert decision2 == ConfirmationDecision.CORRECTION
+
+    # Unknown / ambiguous / inquiry
     assert parse_confirmation("what is the weather today?")[0] == ConfirmationDecision.UNKNOWN
+    assert parse_confirmation("what is the price?")[0] == ConfirmationDecision.UNKNOWN
+    assert parse_confirmation("yes, but actually no")[0] == ConfirmationDecision.UNKNOWN
+
 
 
 @pytest.fixture
