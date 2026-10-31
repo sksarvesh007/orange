@@ -1,0 +1,44 @@
+{
+  "baseline": {
+    "min": 2.47,
+    "p50": 2.83,
+    "p90": 4.04,
+    "p95": 4.65,
+    "p99": 16.34,
+    "max": 16.34,
+    "avg": 3.56
+  },
+  "concurrent_50": {
+    "stats": {
+      "num_users": 50,
+      "total_requests": 100,
+      "successful_bookings": 50,
+      "errors": 0,
+      "rps": 141.90081589161156
+    },
+    "percentiles": {
+      "min": 5.95,
+      "p50": 188.56,
+      "p90": 437.14,
+      "p95": 492.88,
+      "p99": 677.23,
+      "max": 698.16,
+      "avg": 197.23
+    }
+  },
+  "race_condition_50": {
+    "num_racing_requests": 50,
+    "successful_bookings": 50,
+    "unique_booking_ids": 1,
+    "double_booking_detected": false,
+    "percentiles": {
+      "min": 26.5,
+      "p50": 70.54,
+      "p90": 166.06,
+      "p95": 273.34,
+      "p99": 491.21,
+      "max": 491.21,
+      "avg": 95.47
+    }
+  }
+}

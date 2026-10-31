@@ -1,6 +1,6 @@
 # Automated Evaluation Report
 
-**Generated At**: 2026-10-31T12:16:42.597118+00:00  
+**Generated At**: 2026-10-31T12:39:52.973754+00:00  
 **Total Scenarios**: 22 | **Passed**: 22 | **Failed**: 0 | **Pass Rate**: 100.0%
 
 ## Tier Gates Summary

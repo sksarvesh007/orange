@@ -106,7 +106,12 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     if not app_context.session_factory:
         raise HTTPException(status_code=500, detail="Database not initialized")
     async with app_context.session_factory() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 @app.get("/healthz")

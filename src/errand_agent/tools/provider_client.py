@@ -83,8 +83,8 @@ class TokenBucketRateLimiter:
 
     def __init__(
         self,
-        rate_per_second: float = 10.0,
-        capacity: float = 20.0,
+        rate_per_second: float = 250.0,
+        capacity: float = 500.0,
         clock: Clock | None = None,
     ) -> None:
         self.rate = rate_per_second
@@ -133,7 +133,7 @@ class ProviderClient:
         retry_policy: RetryPolicy | None = None,
         clock: Clock | None = None,
         rng: Rng | None = None,
-        max_concurrent_requests: int = 20,
+        max_concurrent_requests: int = 100,
     ) -> None:
         self.provider_service = provider_service
         self.retry_policy = retry_policy or RetryPolicy()
