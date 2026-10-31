@@ -26,19 +26,20 @@ class ConfirmationCard(BaseModel):
 
     def render_text(self) -> str:
         """Render deterministic human-readable card text for the user."""
+        p_name = self.provider_name.replace("<untrusted_data>", "").replace("</untrusted_data>", "").strip()
         if self.action_type == ActionType.BOOK:
             return (
-                f"Please confirm: Book {self.provider_name} for {self.service} on {self.slot} "
+                f"Please confirm: Book {p_name} for {self.service} on {self.slot} "
                 f"at ₹{self.price:,}. Reply YES to confirm or NO to cancel."
             )
         elif self.action_type == ActionType.CANCEL:
             return (
-                f"Please confirm: Cancel booking {self.booking_id} with {self.provider_name} "
+                f"Please confirm: Cancel booking {self.booking_id} with {p_name} "
                 f"for {self.service} on {self.slot}. Reply YES to confirm or NO to keep."
             )
         elif self.action_type == ActionType.RESCHEDULE:
             return (
-                f"Please confirm: Reschedule booking {self.booking_id} with {self.provider_name} "
+                f"Please confirm: Reschedule booking {self.booking_id} with {p_name} "
                 f"to {self.new_slot} at ₹{self.price:,}. Reply YES to confirm or NO to cancel."
             )
         return "Please confirm the requested action (YES/NO)."
