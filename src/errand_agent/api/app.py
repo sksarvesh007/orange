@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import AsyncGenerator
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -120,7 +120,7 @@ async def readyz(session: AsyncSession = Depends(get_session)) -> dict[str, str]
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Database unready: {str(exc)}",
-        )
+        ) from exc
 
 
 @app.post("/chat", response_model=ChatResponse)

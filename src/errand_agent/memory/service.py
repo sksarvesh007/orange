@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-import re
 import uuid
-from datetime import datetime, timezone
-from typing import Any
 
 from errand_agent.domain.enums import Provenance
 from errand_agent.domain.models import MemoryFactRecord
+from errand_agent.policy.extractor import (
+    CorrectFactCommand,
+    ForgetAllMemoryCommand,
+    ForgetFactCommand,
+    InspectMemoryCommand,
+    parse_memory_command,
+)
 from errand_agent.store.repositories import MemoryRepository
 from errand_agent.utils.clock import Clock, FrozenClock
 
@@ -100,35 +104,30 @@ class MemoryService:
         return await self.memory_repo.forget_all(user_id)
 
     async def handle_user_command(self, user_id: str, utterance: str) -> str | None:
-        """Process explicit memory commands deterministically."""
-        lower = utterance.strip().lower()
+        """Process explicit memory commands deterministically without regex."""
+        cmd = parse_memory_command(utterance)
+        if not cmd:
+            return None
 
-        if lower in ("what do you remember about me", "what do you know about me", "show memory"):
+        if isinstance(cmd, InspectMemoryCommand):
             facts = await self.get_active_facts(user_id)
             if not facts:
                 return "I do not have any saved preferences or remembered facts about you."
             items = [f"- {f.key}: {f.value} ({f.provenance.value})" for f in facts]
             return "Here is what I remember about you:\n" + "\n".join(items)
 
-        if lower in ("forget everything", "forget all", "delete all memory"):
+        elif isinstance(cmd, ForgetAllMemoryCommand):
             count = await self.forget_all(user_id)
             return f"I have forgotten all {count} saved facts and preferences about you."
 
-        if lower.startswith("forget "):
-            key = lower.replace("forget ", "").strip()
-            deleted = await self.forget_fact(user_id, key)
+        elif isinstance(cmd, ForgetFactCommand):
+            deleted = await self.forget_fact(user_id, cmd.key)
             if deleted:
-                return f"I have forgotten your preference for '{key}'."
-            return f"I didn't have any saved preference for '{key}'."
+                return f"I have forgotten your preference for '{cmd.key}'."
+            return f"I didn't have any saved preference for '{cmd.key}'."
 
-        if lower.startswith("correct ") and " to " in lower:
-            # Preserve case of value
-            after_correct = utterance.strip()[len("correct "):]
-            parts = re.split(r"\s+to\s+", after_correct, maxsplit=1, flags=re.IGNORECASE)
-            if len(parts) == 2:
-                key = parts[0].strip().lower()
-                val = parts[1].strip()
-                await self.store_stated_fact(user_id, key, val)
-                return f"I have updated your '{key}' preference to '{val}'."
+        elif isinstance(cmd, CorrectFactCommand):
+            await self.store_stated_fact(user_id, cmd.key, cmd.value)
+            return f"I have updated your '{cmd.key}' preference to '{cmd.value}'."
 
         return None

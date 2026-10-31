@@ -7,18 +7,30 @@ negation checking, interrogative classification, and unambiguous decision bounda
 from __future__ import annotations
 
 import string
+
 from errand_agent.domain.enums import ConfirmationDecision
 
 # Exact canonical single tokens
-AFFIRMATIVE_EXACT_TOKENS: frozenset[str] = frozenset({
-    "yes", "y", "yep", "yeah", "sure", "confirm", "confirmed",
-    "proceed", "approved", "approve", "agree", "accepted"
-})
+AFFIRMATIVE_EXACT_TOKENS: frozenset[str] = frozenset(
+    {
+        "yes",
+        "y",
+        "yep",
+        "yeah",
+        "sure",
+        "confirm",
+        "confirmed",
+        "proceed",
+        "approved",
+        "approve",
+        "agree",
+        "accepted",
+    }
+)
 
-DENIAL_EXACT_TOKENS: frozenset[str] = frozenset({
-    "no", "n", "nope", "nah", "cancel", "abort", "stop",
-    "nevermind", "reject", "rejected", "dont"
-})
+DENIAL_EXACT_TOKENS: frozenset[str] = frozenset(
+    {"no", "n", "nope", "nah", "cancel", "abort", "stop", "nevermind", "reject", "rejected", "dont"}
+)
 
 # Canonical n-gram token tuples
 AFFIRMATIVE_PHRASES: tuple[tuple[str, ...], ...] = (
@@ -54,19 +66,21 @@ CORRECTION_TRIGGERS: tuple[tuple[str, ...], ...] = (
     ("rather",),
 )
 
-NEGATION_TOKENS: frozenset[str] = frozenset({
-    "not", "no", "never", "dont", "do_not", "neither", "nor"
-})
+NEGATION_TOKENS: frozenset[str] = frozenset(
+    {"not", "no", "never", "dont", "do_not", "neither", "nor"}
+)
 
-INTERROGATIVE_TOKENS: frozenset[str] = frozenset({
-    "what", "why", "how", "who", "when", "where", "which", "is", "can", "could", "would", "?"
-})
+INTERROGATIVE_TOKENS: frozenset[str] = frozenset(
+    {"what", "why", "how", "who", "when", "where", "which", "is", "can", "could", "would", "?"}
+)
 
 
 def _tokenize(text: str) -> list[str]:
     """Cleanly tokenize text into normalized lowercase alphanumeric tokens."""
     # Handle common contractions before stripping punctuation
-    lowered = text.lower().replace("don't", "dont").replace("won't", "wont").replace("can't", "cant")
+    lowered = (
+        text.lower().replace("don't", "dont").replace("won't", "wont").replace("can't", "cant")
+    )
     cleaned = []
     for ch in lowered:
         if ch in string.ascii_lowercase or ch in string.digits or ch == "?":
@@ -82,10 +96,7 @@ def _matches_phrase(tokens: list[str], phrase: tuple[str, ...]) -> bool:
     k = len(phrase)
     if k > len(tokens):
         return False
-    for i in range(len(tokens) - k + 1):
-        if tuple(tokens[i : i + k]) == phrase:
-            return True
-    return False
+    return any(tuple(tokens[i : i + k]) == phrase for i in range(len(tokens) - k + 1))
 
 
 def parse_confirmation(user_message: str) -> tuple[ConfirmationDecision, str | None]:

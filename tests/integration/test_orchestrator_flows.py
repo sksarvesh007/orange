@@ -1,8 +1,9 @@
 """Integration tests for orchestrator state machine workflows, security, and recovery."""
 
-import pytest
 from datetime import datetime, timezone
 from pathlib import Path
+
+import pytest
 
 from errand_agent.agent.budgets import BudgetConfig
 from errand_agent.agent.orchestrator import ErrandOrchestrator
@@ -22,7 +23,7 @@ from errand_agent.store.repositories import (
     WorkflowStateRepository,
 )
 from errand_agent.tools.provider_client import ProviderClient
-from errand_agent.trace.sink import JsonlSink, NullSink
+from errand_agent.trace.sink import JsonlSink
 from errand_agent.utils.clock import FrozenClock, SeededRng
 
 
@@ -58,21 +59,25 @@ async def orchestrator_fixture(tmp_path: Path):
                 clock=clock,
             )
 
-            return ErrandOrchestrator(
-                session_repo=sess_repo,
-                state_repo=state_repo,
-                approval_repo=approval_repo,
-                ledger_repo=ledger_repo,
-                memory_repo=memory_repo,
-                audit_repo=audit_repo,
-                trace_repo=trace_repo,
-                policy_gate=gate,
-                provider_client=provider_client,
-                trace_sink=trace_sink,
-                model_client=m,
-                budget_config=budget or BudgetConfig(),
-                clock=clock,
-            ), mock_provider, trace_sink
+            return (
+                ErrandOrchestrator(
+                    session_repo=sess_repo,
+                    state_repo=state_repo,
+                    approval_repo=approval_repo,
+                    ledger_repo=ledger_repo,
+                    memory_repo=memory_repo,
+                    audit_repo=audit_repo,
+                    trace_repo=trace_repo,
+                    policy_gate=gate,
+                    provider_client=provider_client,
+                    trace_sink=trace_sink,
+                    model_client=m,
+                    budget_config=budget or BudgetConfig(),
+                    clock=clock,
+                ),
+                mock_provider,
+                trace_sink,
+            )
 
         return get_orchestrator, sessionmaker
 
@@ -227,9 +232,9 @@ async def test_repeated_confirmation_zero_duplicate_bookings(orchestrator_fixtur
         b_id1 = res1.verified_booking_id
 
         # Yes #2
-        res2 = await orch.run("s_repeat", "u_repeat", "Yes")
+        await orch.run("s_repeat", "u_repeat", "Yes")
         # Yes #3
-        res3 = await orch.run("s_repeat", "u_repeat", "Yes")
+        await orch.run("s_repeat", "u_repeat", "Yes")
 
         # Mock book tool must have been called exactly once
         assert mock._call_counters["book"] == 1

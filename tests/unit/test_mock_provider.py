@@ -1,7 +1,8 @@
 """Unit tests verifying the Mock Provider Service fixed contract and scenarios."""
 
-import pytest
 from datetime import datetime, timezone
+
+import pytest
 
 from errand_agent.mocks.provider import (
     HoldExpiredError,
@@ -9,11 +10,10 @@ from errand_agent.mocks.provider import (
     ProviderTimeoutError,
     ServiceUnavailableError,
     SlotConflictError,
-    SlotTakenError,
     SlotUnavailableError,
 )
 from errand_agent.mocks.scenario import Scenario
-from errand_agent.utils.clock import FrozenClock, SeededRng
+from errand_agent.utils.clock import FrozenClock
 
 
 def test_search_providers_returns_results() -> None:
@@ -31,7 +31,9 @@ def test_get_provider_contains_injection() -> None:
     detail = mock.get_provider("P-101")
     assert detail.provider_id == "P-101"
     # Ensure at least one review has injection payload
-    has_injection = any("SYSTEM OVERRIDE" in r or "Ignore all previous" in r for r in detail.reviews)
+    has_injection = any(
+        "SYSTEM OVERRIDE" in r or "Ignore all previous" in r for r in detail.reviews
+    )
     assert has_injection is True
 
 

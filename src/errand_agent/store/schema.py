@@ -12,7 +12,6 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -86,9 +85,7 @@ class ApprovalModel(Base):
 
     session: Mapped[SessionModel] = relationship("SessionModel", back_populates="approvals")
 
-    __table_args__ = (
-        Index("ix_approvals_user_session", "user_id", "session_id"),
-    )
+    __table_args__ = (Index("ix_approvals_user_session", "user_id", "session_id"),)
 
 
 class BookingAttemptModel(Base):
@@ -128,13 +125,13 @@ class MemoryFactModel(Base):
     provenance: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    last_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    __table_args__ = (
-        Index("ix_memory_facts_lookup", "user_id", "key", "deleted_at"),
-    )
+    __table_args__ = (Index("ix_memory_facts_lookup", "user_id", "key", "deleted_at"),)
 
 
 class MemoryTombstoneModel(Base):

@@ -31,9 +31,7 @@ class SlotValue(BaseModel):
     value: Any
     source: SlotSource = SlotSource.USER
     confirmed: bool = True
-    updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class HoldInfo(BaseModel):
@@ -134,7 +132,7 @@ VALID_TRANSITIONS: dict[Phase, set[Phase]] = {
         Phase.AWAITING_APPROVAL,
         Phase.EXECUTING,
         Phase.PRESENTING,  # User rejected or slot taken
-        Phase.HOLDING,     # Re-quote needed
+        Phase.HOLDING,  # Re-quote needed
         Phase.COLLECTING,  # User changed request details
         Phase.CANCELLED_BY_USER,
         Phase.LIMIT_EXHAUSTED,
@@ -145,8 +143,8 @@ VALID_TRANSITIONS: dict[Phase, set[Phase]] = {
         Phase.EXECUTING,
         Phase.VERIFYING,
         Phase.PRESENTING,  # Slot taken during book -> back to presenting
-        Phase.HOLDING,     # Hold expired during book -> re-hold
-        Phase.DONE,        # Completed immediate verification
+        Phase.HOLDING,  # Hold expired during book -> re-hold
+        Phase.DONE,  # Completed immediate verification
         Phase.CANCELLED_BY_USER,
         Phase.LIMIT_EXHAUSTED,
         Phase.FAILED,
@@ -154,7 +152,7 @@ VALID_TRANSITIONS: dict[Phase, set[Phase]] = {
     },
     Phase.VERIFYING: {
         Phase.VERIFYING,
-        Phase.EXECUTING,   # Safe retry
+        Phase.EXECUTING,  # Safe retry
         Phase.DONE,
         Phase.PRESENTING,  # Failed booking reconciliation, offer alternative
         Phase.LIMIT_EXHAUSTED,
@@ -187,21 +185,31 @@ class WorkflowState(BaseModel):
     verified_booking_id: str | None = None
     search_results: list[dict[str, Any]] = Field(default_factory=list)
     version: int = 1
-    updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def missing_slots(self) -> list[str]:
         """Compute missing required slots based on the current intent."""
         if self.intent == Intent.BOOK:
             required = ["service", "area", "date_range"]
-            return [slot for slot in required if slot not in self.slots or self.slots[slot].value is None]
+            return [
+                slot
+                for slot in required
+                if slot not in self.slots or self.slots[slot].value is None
+            ]
         elif self.intent == Intent.RESCHEDULE:
             required = ["booking_id", "new_slot"]
-            return [slot for slot in required if slot not in self.slots or self.slots[slot].value is None]
+            return [
+                slot
+                for slot in required
+                if slot not in self.slots or self.slots[slot].value is None
+            ]
         elif self.intent == Intent.CANCEL:
             required = ["booking_id"]
-            return [slot for slot in required if slot not in self.slots or self.slots[slot].value is None]
+            return [
+                slot
+                for slot in required
+                if slot not in self.slots or self.slots[slot].value is None
+            ]
         return []
 
     def set_slot(

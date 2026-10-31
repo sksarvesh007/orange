@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from errand_agent.domain.enums import BookingStatus, Phase
-from errand_agent.domain.models import BookingAttemptRecord
 from errand_agent.store.repositories import BookingLedgerRepository, WorkflowStateRepository
 from errand_agent.tools.provider_client import ProviderClient
 from errand_agent.trace.models import TraceEvent, hash_user_id
@@ -68,7 +67,9 @@ async def reconcile_in_flight_attempts(
             state = await state_repo.get(attempt.session_id)
             if state and state.phase != Phase.DONE:
                 state.verified_booking_id = booking_id
-                state.transition_to(Phase.DONE, reason="Recovery routine reconciled verified booking")
+                state.transition_to(
+                    Phase.DONE, reason="Recovery routine reconciled verified booking"
+                )
                 await state_repo.save(state)
 
             await trace_sink.emit(
@@ -96,7 +97,9 @@ async def reconcile_in_flight_attempts(
             )
             state = await state_repo.get(attempt.session_id)
             if state and state.phase in (Phase.EXECUTING, Phase.VERIFYING):
-                state.transition_to(Phase.NEEDS_HUMAN, reason="Restart recovery found uncommitted attempt")
+                state.transition_to(
+                    Phase.NEEDS_HUMAN, reason="Restart recovery found uncommitted attempt"
+                )
                 await state_repo.save(state)
 
             await trace_sink.emit(

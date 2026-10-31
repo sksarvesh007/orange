@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import re
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from errand_agent.agent.budgets import BudgetConfig, BudgetExceededError, BudgetTracker
 from errand_agent.domain.enums import (
-    ActionType,
     BookingStatus,
     ConfirmationDecision,
     Intent,
@@ -18,32 +16,32 @@ from errand_agent.domain.enums import (
     Provenance,
     SlotSource,
 )
-from errand_agent.domain.models import ConfirmationCard
 from errand_agent.domain.state import (
     HoldInfo,
     WorkflowState,
-    compute_action_hash,
 )
 from errand_agent.mocks.provider import (
     HoldExpiredError,
     ProviderTimeoutError,
-    SlotConflictError,
     SlotTakenError,
     SlotUnavailableError,
 )
 from errand_agent.model.base import (
     AskSlotAction,
     MaliciousDirectBookAction,
-    ModelAction,
     ModelClient,
-    PresentOptionsAction,
-    ProposeApprovalAction,
     RespondAction,
     SanitizedStateView,
-    SearchAction,
-    SelectAndHoldAction,
 )
-from errand_agent.policy.gate import PolicyGate, PolicyViolationError, SideEffectExecutor
+from errand_agent.policy.extractor import (
+    CorrectFactCommand,
+    ForgetAllMemoryCommand,
+    ForgetFactCommand,
+    InspectMemoryCommand,
+    extract_intent_and_slots,
+    parse_memory_command,
+)
+from errand_agent.policy.gate import PolicyGate, SideEffectExecutor
 from errand_agent.store.repositories import (
     ApprovalRepository,
     AuditLogRepository,
@@ -128,94 +126,59 @@ class ErrandOrchestrator:
         return name.replace("<untrusted_data>", "").replace("</untrusted_data>", "").strip()
 
     def _extract_intent_and_slots(self, message: str, state: WorkflowState) -> None:
-        """Deterministic extractor for intent and slots from user utterance."""
-        lower = message.lower()
+        """Deterministic extractor for intent and slots from user utterance using structural lexing."""
+        extracted = extract_intent_and_slots(message, existing_intent=state.intent)
+        if extracted.intent and state.intent == Intent.NONE:
+            state.intent = extracted.intent
 
-        # Intent detection
-        if state.intent == Intent.NONE:
-            if any(k in lower for k in ["cancel", "drop", "stop my booking"]):
-                state.intent = Intent.CANCEL
-            elif any(k in lower for k in ["reschedule", "move my", "change time", "postpone"]):
-                state.intent = Intent.RESCHEDULE
-            elif any(k in lower for k in ["book", "find", "hire", "need a", "get a"]):
-                state.intent = Intent.BOOK
-
-        # Services
-        services = ["plumber", "electrician", "ac servicing", "carpentry", "cleaning"]
-        for s in services:
-            if s in lower:
-                state.set_slot("service", s, source=SlotSource.USER)
-                break
-
-        # Localities / Areas
-        areas = ["indiranagar", "koramangala", "hsr layout", "whitefield", "jayanagar", "malleswaram"]
-        for a in areas:
-            if a in lower:
-                state.set_slot("area", a.title(), source=SlotSource.USER)
-                break
-
-        # Time Windows / Dates
-        if "this week" in lower:
-            state.set_slot("date_range", "this week", source=SlotSource.USER)
-        elif "saturday morning" in lower:
-            state.set_slot("date_range", "Saturday morning", source=SlotSource.USER)
-        elif "saturday afternoon" in lower:
-            state.set_slot("date_range", "Saturday afternoon", source=SlotSource.USER)
-        elif "saturday" in lower:
-            state.set_slot("date_range", "Saturday", source=SlotSource.USER)
-        elif "mornings only" in lower:
-            state.set_slot("date_range", "mornings only", source=SlotSource.USER)
-
-        # Budget extraction: e.g. "under ₹1,500" or "under 1500" or "budget 1200"
-        budget_match = re.search(r"(?:under|below|within|budget of?)\s*(?:₹|rs\.?|inr)?\s*(\d{3,5})", lower)
-        if budget_match:
-            state.set_slot("budget", int(budget_match.group(1)), source=SlotSource.USER)
-
-        # Earliest time: e.g. "not before 10 a.m."
-        earliest_match = re.search(r"not before\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.))", lower)
-        if earliest_match:
-            state.set_slot("earliest_time", earliest_match.group(1), source=SlotSource.USER)
-
-        # Reference resolution flag
-        if "same electrician as last time" in lower or "same as last time" in lower:
+        if extracted.service:
+            state.set_slot("service", extracted.service, source=SlotSource.USER)
+        if extracted.area:
+            state.set_slot("area", extracted.area, source=SlotSource.USER)
+        if extracted.date_range:
+            state.set_slot("date_range", extracted.date_range, source=SlotSource.USER)
+        if extracted.budget is not None:
+            state.set_slot("budget", extracted.budget, source=SlotSource.USER)
+        if extracted.earliest_time:
+            state.set_slot("earliest_time", extracted.earliest_time, source=SlotSource.USER)
+        if extracted.reference_last_provider:
             state.set_slot("reference_last_provider", True, source=SlotSource.USER)
 
     async def _handle_memory_commands(self, user_id: str, message: str) -> str | None:
-        """Process explicit memory control commands deterministically."""
-        lower = message.strip().lower()
+        """Process explicit memory control commands deterministically without regex."""
+        cmd = parse_memory_command(message)
+        if not cmd:
+            return None
 
-        if lower in ("what do you remember about me", "what do you know about me", "my preferences"):
+        if isinstance(cmd, InspectMemoryCommand):
             facts = await self.memory_repo.get_facts(user_id)
             if not facts:
                 return "I don't have any saved preferences or remembered facts about you."
             items = [f"- {f.key}: {f.value} ({f.provenance.value})" for f in facts]
             return "Here is what I remember about you:\n" + "\n".join(items)
 
-        if lower in ("forget everything", "forget all", "delete all memory"):
+        elif isinstance(cmd, ForgetAllMemoryCommand):
             count = await self.memory_repo.forget_all(user_id)
             return f"I have completely forgotten all {count} saved facts and preferences about you."
 
-        if lower.startswith("forget "):
-            key = lower.replace("forget ", "").strip()
-            deleted = await self.memory_repo.delete_fact(user_id, key)
+        elif isinstance(cmd, ForgetFactCommand):
+            deleted = await self.memory_repo.delete_fact(user_id, cmd.key)
             if deleted:
-                return f"I have forgotten your preference for '{key}'."
-            return f"I didn't have any saved preference for '{key}'."
+                return f"I have forgotten your preference for '{cmd.key}'."
+            return f"I didn't have any saved preference for '{cmd.key}'."
 
-        if lower.startswith("correct ") and " to " in lower:
-            parts = lower.replace("correct ", "").split(" to ", 1)
-            key = parts[0].strip()
-            val = parts[1].strip()
+        elif isinstance(cmd, CorrectFactCommand):
             from errand_agent.domain.models import MemoryFactRecord
+
             fact = MemoryFactRecord(
                 id=f"mem_{uuid.uuid4().hex[:8]}",
                 user_id=user_id,
-                key=key,
-                value=val,
+                key=cmd.key,
+                value=cmd.value,
                 provenance=Provenance.STATED,
             )
             await self.memory_repo.save_fact(fact)
-            return f"I have updated your '{key}' preference to '{val}'."
+            return f"I have updated your '{cmd.key}' preference to '{cmd.value}'."
 
         return None
 
@@ -241,7 +204,11 @@ class ErrandOrchestrator:
         memory_reply = await self._handle_memory_commands(user_id, message)
         if memory_reply:
             await self._emit_trace(
-                run_id, session_id, user_id, "memory_event", {"command": "user_control", "reply": memory_reply}
+                run_id,
+                session_id,
+                user_id,
+                "memory_event",
+                {"command": "user_control", "reply": memory_reply},
             )
             return OrchestratorTurnResult(
                 reply=memory_reply,
@@ -283,8 +250,11 @@ class ErrandOrchestrator:
                     if decision == ConfirmationDecision.AFFIRM and approval:
                         state.transition_to(Phase.EXECUTING, reason="User confirmed approval card")
                         await self._emit_trace(
-                            run_id, session_id, user_id, "state_transition",
-                            {"from": Phase.AWAITING_APPROVAL.value, "to": Phase.EXECUTING.value}
+                            run_id,
+                            session_id,
+                            user_id,
+                            "state_transition",
+                            {"from": Phase.AWAITING_APPROVAL.value, "to": Phase.EXECUTING.value},
                         )
 
                         # Acquire capability token
@@ -321,8 +291,15 @@ class ErrandOrchestrator:
                             state.verified_booking_id = booking_id
                             state.transition_to(Phase.DONE, reason="Booking verified successfully")
                             await self._emit_trace(
-                                run_id, session_id, user_id, "state_transition",
-                                {"from": Phase.EXECUTING.value, "to": Phase.DONE.value, "booking_id": booking_id}
+                                run_id,
+                                session_id,
+                                user_id,
+                                "state_transition",
+                                {
+                                    "from": Phase.EXECUTING.value,
+                                    "to": Phase.DONE.value,
+                                    "booking_id": booking_id,
+                                },
                             )
 
                             clean_name = self._clean_provider_name(state.selected_provider_name)
@@ -335,22 +312,35 @@ class ErrandOrchestrator:
 
                         except ProviderTimeoutError:
                             # Section 4.3: On timeout, call get_booking_status authoritative source of truth
-                            state.transition_to(Phase.VERIFYING, reason="Booking timed out; reconciling status")
+                            state.transition_to(
+                                Phase.VERIFYING, reason="Booking timed out; reconciling status"
+                            )
                             await self._emit_trace(
-                                run_id, session_id, user_id, "state_transition",
-                                {"from": Phase.EXECUTING.value, "to": Phase.VERIFYING.value}
+                                run_id,
+                                session_id,
+                                user_id,
+                                "state_transition",
+                                {"from": Phase.EXECUTING.value, "to": Phase.VERIFYING.value},
                             )
 
                             budget.record_tool_call("get_booking_status")
-                            status_res = await self.provider_client.get_booking_status(token.idempotency_key)
+                            status_res = await self.provider_client.get_booking_status(
+                                token.idempotency_key
+                            )
 
-                            if status_res.get("status") == "booked" and status_res.get("booking_id"):
+                            if status_res.get("status") == "booked" and status_res.get(
+                                "booking_id"
+                            ):
                                 b_id = status_res["booking_id"]
                                 state.verified_booking_id = b_id
                                 await self.ledger_repo.update_status(
-                                    token.idempotency_key, status=BookingStatus.BOOKED, booking_id=b_id
+                                    token.idempotency_key,
+                                    status=BookingStatus.BOOKED,
+                                    booking_id=b_id,
                                 )
-                                state.transition_to(Phase.DONE, reason="Reconciliation verified booking")
+                                state.transition_to(
+                                    Phase.DONE, reason="Reconciliation verified booking"
+                                )
                                 clean_name = self._clean_provider_name(state.selected_provider_name)
                                 reply = (
                                     f"Booking verified! Booked {clean_name} "
@@ -370,20 +360,26 @@ class ErrandOrchestrator:
                                     )
                                     state.verified_booking_id = b_id2
                                     state.transition_to(Phase.DONE, reason="Retry succeeded")
-                                    clean_name = self._clean_provider_name(state.selected_provider_name)
+                                    clean_name = self._clean_provider_name(
+                                        state.selected_provider_name
+                                    )
                                     reply = (
                                         f"Booking confirmed on retry! Booked {clean_name} "
                                         f"for {state.get_slot_value('service')} on {state.selected_slot} "
                                         f"at ₹{state.price:,}. Booking ID: {b_id2}."
                                     )
-                                    return await self._finalize(run_id, state, reply, is_terminal=True)
+                                    return await self._finalize(
+                                        run_id, state, reply, is_terminal=True
+                                    )
                                 except Exception:
                                     state.transition_to(Phase.NEEDS_HUMAN, reason="Retry failed")
                                     reply = (
                                         f"We experienced an issue confirming your reservation with the provider. "
                                         f"Our support team has been flagged to verify your booking (Reference: {token.idempotency_key[:12]})."
                                     )
-                                    return await self._finalize(run_id, state, reply, is_terminal=True)
+                                    return await self._finalize(
+                                        run_id, state, reply, is_terminal=True
+                                    )
 
                             else:
                                 state.transition_to(Phase.NEEDS_HUMAN, reason="Status unresolved")
@@ -395,7 +391,9 @@ class ErrandOrchestrator:
 
                         except SlotTakenError:
                             # Slot was claimed by another party
-                            state.transition_to(Phase.PRESENTING, reason="Slot taken during booking")
+                            state.transition_to(
+                                Phase.PRESENTING, reason="Slot taken during booking"
+                            )
                             state.hold = None
                             reply = (
                                 "The selected time slot was unfortunately claimed by another user just now. "
@@ -410,7 +408,9 @@ class ErrandOrchestrator:
                             return await self._finalize(run_id, state, reply)
 
                     elif decision == ConfirmationDecision.DENY:
-                        state.transition_to(Phase.CANCELLED_BY_USER, reason="User rejected confirmation card")
+                        state.transition_to(
+                            Phase.CANCELLED_BY_USER, reason="User rejected confirmation card"
+                        )
                         reply = "Understood, I have cancelled this request. No booking was made."
                         return await self._finalize(run_id, state, reply, is_terminal=True)
 
@@ -437,12 +437,19 @@ class ErrandOrchestrator:
                         elif isinstance(action, MaliciousDirectBookAction):
                             # Adversarial model attempt
                             await self._emit_trace(
-                                run_id, session_id, user_id, "policy_decision",
-                                {"decision": "blocked", "reason": "Model emitted unauthorized direct book"}
+                                run_id,
+                                session_id,
+                                user_id,
+                                "policy_decision",
+                                {
+                                    "decision": "blocked",
+                                    "reason": "Model emitted unauthorized direct book",
+                                },
                             )
                             return await self._finalize(
-                                run_id, state,
-                                "Direct booking proposal was blocked by the security policy. Approval is strictly required."
+                                run_id,
+                                state,
+                                "Direct booking proposal was blocked by the security policy. Approval is strictly required.",
                             )
                         elif isinstance(action, RespondAction):
                             return await self._finalize(run_id, state, action.message)
@@ -450,8 +457,11 @@ class ErrandOrchestrator:
                     # All slots present -> move to SEARCHING
                     state.transition_to(Phase.SEARCHING, reason="All required slots collected")
                     await self._emit_trace(
-                        run_id, session_id, user_id, "state_transition",
-                        {"from": Phase.COLLECTING.value, "to": Phase.SEARCHING.value}
+                        run_id,
+                        session_id,
+                        user_id,
+                        "state_transition",
+                        {"from": Phase.COLLECTING.value, "to": Phase.SEARCHING.value},
                     )
 
                 # Phase: SEARCHING
@@ -460,7 +470,11 @@ class ErrandOrchestrator:
                     if state.get_slot_value("reference_last_provider"):
                         budget.record_tool_call("list_bookings")
                         past_bookings = await self.provider_client.list_bookings(user_id)
-                        matching = [b for b in past_bookings if b.get("service") == state.get_slot_value("service")]
+                        matching = [
+                            b
+                            for b in past_bookings
+                            if b.get("service") == state.get_slot_value("service")
+                        ]
                         if matching:
                             state.selected_provider_id = matching[-1].get("provider_id")
                             state.selected_provider_name = matching[-1].get("provider_name")
@@ -473,18 +487,19 @@ class ErrandOrchestrator:
                     )
 
                     # Inspect providers for prompt injection attempts in reviews
-                    flagged_injection = False
                     for p in providers:
                         budget.record_tool_call("get_provider")
                         p_detail = await self.provider_client.get_provider(p["provider_id"])
                         if p_detail.get("_metadata", {}).get("has_injection"):
-                            flagged_injection = True
                             await self._emit_trace(
-                                run_id, session_id, user_id, "injection_flag",
+                                run_id,
+                                session_id,
+                                user_id,
+                                "injection_flag",
                                 {
                                     "provider_id": p["provider_id"],
                                     "reasons": p_detail["_metadata"]["flagged_reasons"],
-                                }
+                                },
                             )
 
                     # Deterministic filtering by budget and earliest time
@@ -496,22 +511,28 @@ class ErrandOrchestrator:
                     if earliest_time and "10" in earliest_time:
                         # Filter slots before 10 AM
                         for p in providers:
-                            p["slots"] = [s for s in p.get("slots", []) if "09:" not in s and "08:" not in s]
+                            p["slots"] = [
+                                s for s in p.get("slots", []) if "09:" not in s and "08:" not in s
+                            ]
 
                     state.search_results = providers
                     state.transition_to(Phase.PRESENTING, reason="Providers found and sanitized")
                     await self._emit_trace(
-                        run_id, session_id, user_id, "state_transition",
-                        {"from": Phase.SEARCHING.value, "to": Phase.PRESENTING.value}
+                        run_id,
+                        session_id,
+                        user_id,
+                        "state_transition",
+                        {"from": Phase.SEARCHING.value, "to": Phase.PRESENTING.value},
                     )
 
                 # Phase: PRESENTING
                 if state.phase == Phase.PRESENTING:
                     if not state.search_results:
                         return await self._finalize(
-                            run_id, state,
+                            run_id,
+                            state,
                             "I couldn't find any verified providers meeting your exact constraints. "
-                            "Would you like to broaden your budget or search time window?"
+                            "Would you like to broaden your budget or search time window?",
                         )
 
                     # Choose provider
@@ -529,8 +550,11 @@ class ErrandOrchestrator:
 
                     state.transition_to(Phase.HOLDING, reason="Selected provider to acquire hold")
                     await self._emit_trace(
-                        run_id, session_id, user_id, "state_transition",
-                        {"from": Phase.PRESENTING.value, "to": Phase.HOLDING.value}
+                        run_id,
+                        session_id,
+                        user_id,
+                        "state_transition",
+                        {"from": Phase.PRESENTING.value, "to": Phase.HOLDING.value},
                     )
 
                 # Phase: HOLDING
@@ -553,16 +577,23 @@ class ErrandOrchestrator:
                             state.price = raw_hold["quoted_price"]
 
                         card = self.policy_gate.build_confirmation_card(state)
-                        state.transition_to(Phase.AWAITING_APPROVAL, reason="Slot held; awaiting user approval")
+                        state.transition_to(
+                            Phase.AWAITING_APPROVAL, reason="Slot held; awaiting user approval"
+                        )
                         await self._emit_trace(
-                            run_id, session_id, user_id, "state_transition",
-                            {"from": Phase.HOLDING.value, "to": Phase.AWAITING_APPROVAL.value}
+                            run_id,
+                            session_id,
+                            user_id,
+                            "state_transition",
+                            {"from": Phase.HOLDING.value, "to": Phase.AWAITING_APPROVAL.value},
                         )
 
                         return await self._finalize(run_id, state, card.render_text())
 
                     except SlotUnavailableError:
-                        state.transition_to(Phase.PRESENTING, reason="Slot unavailable; selecting alternate")
+                        state.transition_to(
+                            Phase.PRESENTING, reason="Slot unavailable; selecting alternate"
+                        )
                         continue
 
                 # Fallback safeguard

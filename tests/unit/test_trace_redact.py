@@ -1,8 +1,9 @@
 """Unit tests for trace event redaction and JsonlSink."""
 
 import json
-import pytest
 from pathlib import Path
+
+import pytest
 
 from errand_agent.trace.models import TraceEvent, hash_user_id
 from errand_agent.trace.redact import redact_event

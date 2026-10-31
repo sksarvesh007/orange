@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator
+from typing import Any
+
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -14,6 +15,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 class Base(DeclarativeBase):
     """Declarative base class for all relational models."""
+
     pass
 
 

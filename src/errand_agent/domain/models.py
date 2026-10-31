@@ -26,7 +26,11 @@ class ConfirmationCard(BaseModel):
 
     def render_text(self) -> str:
         """Render deterministic human-readable card text for the user."""
-        p_name = self.provider_name.replace("<untrusted_data>", "").replace("</untrusted_data>", "").strip()
+        p_name = (
+            self.provider_name.replace("<untrusted_data>", "")
+            .replace("</untrusted_data>", "")
+            .strip()
+        )
         if self.action_type == ActionType.BOOK:
             return (
                 f"Please confirm: Book {p_name} for {self.service} on {self.slot} "
@@ -72,11 +76,7 @@ class ApprovalRecord(BaseModel):
         check_time = ensure_utc(now) or datetime.now(timezone.utc)
         exp = ensure_utc(self.expires_at)
         assert exp is not None
-        return (
-            self.consumed_at is None
-            and self.voided_at is None
-            and exp > check_time
-        )
+        return self.consumed_at is None and self.voided_at is None and exp > check_time
 
     @property
     def is_valid(self) -> bool:
@@ -99,12 +99,8 @@ class BookingAttemptRecord(BaseModel):
     status: BookingStatus = BookingStatus.INTENT
     attempt_count: int = 0
     last_error: str | None = None
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class MemoryFactRecord(BaseModel):
@@ -115,12 +111,8 @@ class MemoryFactRecord(BaseModel):
     key: str
     value: str
     provenance: Provenance = Provenance.STATED
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_confirmed_at: datetime | None = None
     deleted_at: datetime | None = None
     source_run_id: str | None = None
@@ -130,9 +122,7 @@ class AuditLogRecord(BaseModel):
     """Audit log entry for all security-sensitive and side-effect actions."""
 
     id: str
-    ts: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    ts: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     session_id: str
     user_id: str
     event_type: str
@@ -149,9 +139,5 @@ class SessionRecord(BaseModel):
     user_id: str
     status: str = "active"
     version: int = 1
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

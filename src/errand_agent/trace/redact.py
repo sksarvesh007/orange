@@ -10,7 +10,9 @@ from errand_agent.trace.models import TraceEvent
 
 # Patterns identifying potential secrets and tokens
 SECRET_PATTERNS = [
-    re.compile(r"(?i)(api[_-]?key|secret|token|password|auth|bearer)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-\.]{8,})['\"]?"),
+    re.compile(
+        r"(?i)(api[_-]?key|secret|token|password|auth|bearer)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-\.]{8,})['\"]?"
+    ),
     re.compile(r"(?i)SENTINEL[_-]SECRET[_-]?[a-zA-Z0-9_]*"),
     re.compile(r"sk-[a-zA-Z0-9]{20,}"),
     re.compile(r"ghp_[a-zA-Z0-9]{20,}"),
@@ -45,14 +47,17 @@ def _redact_review(review_text: str) -> str:
 def _sanitize_data(data: Any, key_name: str = "") -> Any:
     """Recursively sanitize data structures."""
     if isinstance(data, dict):
-        sanitized = {}
+        sanitized: dict[str, Any] = {}
         for k, v in data.items():
             k_lower = str(k).lower()
             if any(sens in k_lower for sens in SENSITIVE_KEY_NAMES):
                 sanitized[k] = "[REDACTED_SECRET]"
             elif k_lower == "reviews" and isinstance(v, list):
                 # Specific redaction for raw review lists
-                sanitized[k] = [_redact_review(str(r)) if isinstance(r, str) else _sanitize_data(r, k) for r in v]
+                sanitized[k] = [
+                    _redact_review(str(r)) if isinstance(r, str) else _sanitize_data(r, k)
+                    for r in v
+                ]
             elif "review" in k_lower and isinstance(v, str):
                 sanitized[k] = _redact_review(v)
             else:

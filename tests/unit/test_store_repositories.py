@@ -1,9 +1,10 @@
 """Unit and integration tests for store layer and repositories."""
 
-import pytest
 from datetime import datetime, timedelta, timezone
 
-from errand_agent.domain.enums import ActionType, BookingStatus, Intent, Phase, Provenance
+import pytest
+
+from errand_agent.domain.enums import ActionType, BookingStatus, Intent, Provenance
 from errand_agent.domain.models import (
     ApprovalRecord,
     BookingAttemptRecord,
@@ -13,12 +14,10 @@ from errand_agent.domain.state import WorkflowState
 from errand_agent.store.base import Base, create_engine_and_sessionmaker
 from errand_agent.store.repositories import (
     ApprovalRepository,
-    AuditLogRepository,
     BookingLedgerRepository,
     ConcurrencyError,
     MemoryRepository,
     SessionRepository,
-    TraceIndexRepository,
     WorkflowStateRepository,
 )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -67,25 +68,18 @@ class CompositeSink(TraceSink):
 
     async def emit(self, event: TraceEvent) -> None:
         for sink in self.sinks:
-            try:
+            with contextlib.suppress(Exception):
                 await sink.emit(event)
-            except Exception:
-                # Failure in one exporter must never break the main execution
-                pass
 
     async def flush(self) -> None:
         for sink in self.sinks:
-            try:
+            with contextlib.suppress(Exception):
                 await sink.flush()
-            except Exception:
-                pass
 
     async def close(self) -> None:
         for sink in self.sinks:
-            try:
+            with contextlib.suppress(Exception):
                 await sink.close()
-            except Exception:
-                pass
 
 
 class NullSink(TraceSink):

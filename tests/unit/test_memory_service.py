@@ -1,7 +1,8 @@
 """Unit tests for MemoryService: provenance, tombstones, and real commands."""
 
-import pytest
 from datetime import datetime, timezone
+
+import pytest
 
 from errand_agent.domain.enums import Provenance
 from errand_agent.memory.service import MemoryService

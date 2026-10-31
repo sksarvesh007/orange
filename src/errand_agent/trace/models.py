@@ -21,9 +21,7 @@ class TraceEvent(BaseModel):
     run_id: str
     session_id: str
     user_id_hash: str
-    timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     event_type: str  # state_transition, model_call, tool_call, tool_result, policy_decision, approval_event, budget_event, memory_event, injection_flag
     data: dict[str, Any] = Field(default_factory=dict)
 

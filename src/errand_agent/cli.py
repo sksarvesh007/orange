@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 import click
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from errand_agent.api.app import app
 
@@ -25,11 +25,15 @@ def cli() -> None:
 def chat(user_id: str, session_id: str | None) -> None:
     """Start an interactive chat session with the Errand Agent."""
     sid = session_id or f"sess_{uuid.uuid4().hex[:8]}"
-    click.echo(click.style(f"=== Errand Agent Chat (Session: {sid}, User: {user_id}) ===", fg="cyan", bold=True))
+    click.echo(
+        click.style(
+            f"=== Errand Agent Chat (Session: {sid}, User: {user_id}) ===", fg="cyan", bold=True
+        )
+    )
     click.echo("Type 'exit' or 'quit' to end.\n")
 
     async def _loop() -> None:
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             while True:
                 try:
                     user_msg = click.prompt(click.style("You", fg="green", bold=True))
@@ -48,7 +52,9 @@ def chat(user_id: str, session_id: str | None) -> None:
                     reply = data["reply"]
                     phase = data["phase"]
                     run_id = data["run_id"]
-                    click.echo(click.style(f"Agent [{phase}]:", fg="yellow", bold=True) + f" {reply}")
+                    click.echo(
+                        click.style(f"Agent [{phase}]:", fg="yellow", bold=True) + f" {reply}"
+                    )
                     click.echo(click.style(f"  (Trace run_id: {run_id})\n", fg="bright_black"))
                 else:
                     click.echo(click.style(f"Error {res.status_code}: {res.text}", fg="red"))
@@ -91,7 +97,9 @@ def pretty_trace(run_id: str, trace_dir: str) -> None:
         click.echo(click.style(f"Trace {run_id} not found in {trace_dir}", fg="red"))
         return
 
-    click.echo(click.style(f"\n================ Trace: {run_id} ================", fg="cyan", bold=True))
+    click.echo(
+        click.style(f"\n================ Trace: {run_id} ================", fg="cyan", bold=True)
+    )
     with open(p, "r", encoding="utf-8") as f:
         for idx, line in enumerate(f, 1):
             if not line.strip():

@@ -1,9 +1,10 @@
 """Unit tests for domain state machine, slots, hashes, and clock/rng."""
 
-import pytest
 from datetime import datetime, timezone
 
-from errand_agent.domain.enums import ActionType, Intent, Phase, SlotSource
+import pytest
+
+from errand_agent.domain.enums import ActionType, Intent, Phase
 from errand_agent.domain.state import (
     IllegalStateTransitionError,
     WorkflowState,
@@ -11,7 +12,6 @@ from errand_agent.domain.state import (
     compute_idempotency_key,
 )
 from errand_agent.utils.clock import FrozenClock, SeededRng
-from errand_agent.mocks.scenario import Scenario
 
 
 def test_frozen_clock_advance() -> None:

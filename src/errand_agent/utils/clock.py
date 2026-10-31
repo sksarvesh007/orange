@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
-from typing import Any, Sequence, TypeVar
+from typing import Sequence, TypeVar
 
 T = TypeVar("T")
 

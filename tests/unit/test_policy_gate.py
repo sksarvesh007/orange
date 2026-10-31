@@ -1,11 +1,11 @@
 """Unit tests for PolicyGate, ApprovalToken, and SideEffectExecutor."""
 
-import pytest
 from datetime import datetime, timezone
-from pathlib import Path
 
-from errand_agent.domain.enums import ActionType, BookingStatus, ConfirmationDecision, Intent
-from errand_agent.domain.state import WorkflowState, compute_action_hash
+import pytest
+
+from errand_agent.domain.enums import ActionType, ConfirmationDecision, Intent
+from errand_agent.domain.state import WorkflowState
 from errand_agent.mocks.provider import MockProviderService
 from errand_agent.mocks.scenario import Scenario
 from errand_agent.policy.gate import PolicyGate, PolicyViolationError, SideEffectExecutor
@@ -52,7 +52,6 @@ def test_deterministic_confirmation_parser() -> None:
     assert parse_confirmation("what is the weather today?")[0] == ConfirmationDecision.UNKNOWN
     assert parse_confirmation("what is the price?")[0] == ConfirmationDecision.UNKNOWN
     assert parse_confirmation("yes, but actually no")[0] == ConfirmationDecision.UNKNOWN
-
 
 
 @pytest.fixture
@@ -169,7 +168,6 @@ async def test_side_effect_executor_requires_valid_token(gate_setup) -> None:
 @pytest.mark.asyncio
 async def test_malicious_call_without_approval_blocked(gate_setup) -> None:
     gate, approval_repo, ledger_repo, clock, sessionmaker = gate_setup
-    mock = MockProviderService()
 
     # Attempt to verify token with no approval in DB
     with pytest.raises(PolicyViolationError):
@@ -195,6 +193,7 @@ async def test_repeated_confirmation_idempotent_skip(gate_setup) -> None:
     state.selected_slot = "Saturday 10:00 AM"
     state.price = 1200
     from errand_agent.domain.state import HoldInfo
+
     state.hold = HoldInfo(
         hold_id=hold.hold_id,
         provider_id=hold.provider_id,

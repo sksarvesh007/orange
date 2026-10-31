@@ -1,12 +1,13 @@
 """Tests for crash and restart recovery routines."""
 
-import pytest
 from datetime import datetime, timezone
+
+import pytest
 
 from errand_agent.agent.recovery import reconcile_in_flight_attempts
 from errand_agent.domain.enums import ActionType, BookingStatus, Intent, Phase
 from errand_agent.domain.models import BookingAttemptRecord
-from errand_agent.domain.state import WorkflowState, compute_idempotency_key
+from errand_agent.domain.state import WorkflowState
 from errand_agent.mocks.provider import MockProviderService
 from errand_agent.store.base import Base, create_engine_and_sessionmaker
 from errand_agent.store.repositories import (

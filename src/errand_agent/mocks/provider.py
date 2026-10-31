@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Any
 
 from errand_agent.mocks.scenario import MockOutcome, Scenario
@@ -14,36 +14,43 @@ from errand_agent.utils.clock import Clock, FrozenClock, Rng, SeededRng
 # Fixed contract exceptions
 class ProviderMockError(Exception):
     """Base exception for provider mock errors."""
+
     pass
 
 
 class SlotUnavailableError(ProviderMockError):
     """Raised when hold_slot fails because the slot is unavailable."""
+
     pass
 
 
 class SlotTakenError(ProviderMockError):
     """Raised when book fails because the slot was claimed by another party."""
+
     pass
 
 
 class HoldExpiredError(ProviderMockError):
     """Raised when book is called with an expired hold."""
+
     pass
 
 
 class SlotConflictError(ProviderMockError):
     """Raised when reschedule fails due to slot conflict."""
+
     pass
 
 
 class ProviderTimeoutError(ProviderMockError):
     """Raised when a call times out."""
+
     pass
 
 
 class ServiceUnavailableError(ProviderMockError):
     """Raised when provider returns transient 503."""
+
     pass
 
 
@@ -109,7 +116,12 @@ DEFAULT_PROVIDERS = [
         "area": "Indiranagar",
         "price": 1200,
         "rating": 4.8,
-        "slots": ["Wednesday 10:00 AM", "Thursday 11:30 AM", "Saturday 09:00 AM", "Saturday 10:30 AM"],
+        "slots": [
+            "Wednesday 10:00 AM",
+            "Thursday 11:30 AM",
+            "Saturday 09:00 AM",
+            "Saturday 10:30 AM",
+        ],
         "attributes": ["licensed", "verified", "punctual"],
         "reviews": [
             "Excellent tap repair, very clean work.",
@@ -199,7 +211,7 @@ class MockProviderService:
         self.rng = rng or SeededRng(self.scenario.seed)
 
         self._providers: dict[str, dict[str, Any]] = {
-            p["provider_id"]: deepcopy(p) for p in DEFAULT_PROVIDERS
+            str(p["provider_id"]): deepcopy(p) for p in DEFAULT_PROVIDERS
         }
         self._holds: dict[str, HoldResult] = {}
         self._bookings: dict[str, BookingRecord] = {}
@@ -263,7 +275,7 @@ class MockProviderService:
         """Search providers: 3-8 providers matching criteria. Guaranteed no failures."""
         self._next_call_index("search_providers")
         service_clean = service.strip().lower()
-        area_clean = area.strip().lower()
+        _ = area
 
         matches: list[ProviderSearchResult] = []
         for p in self._providers.values():
@@ -383,14 +395,15 @@ class MockProviderService:
             cached = self._idempotency_map[idempotency_key]
             status = cached["status"]
             if status == "booked":
-                return cached["booking_id"]
+                return str(cached["booking_id"])
             elif status == "slot_taken":
                 raise SlotTakenError("Slot was already taken")
             elif status == "timeout_after_success":
                 # Idempotent re-execution of a timed-out call that succeeded
-                return cached["booking_id"]
+                return str(cached["booking_id"])
             elif status == "timeout_not_booked":
-                raise ProviderTimeoutError("Connection timed out before provider processed request")
+                # Request dropped before commit; retry with same key is permitted to reach provider
+                pass
             elif status == "hold_expired":
                 raise HoldExpiredError("Hold expired")
             elif status == "failed":
@@ -418,7 +431,9 @@ class MockProviderService:
                 outcome = "slot_taken"
             elif roll < (self.scenario.book_slot_taken_rate + self.scenario.book_timeout_rate):
                 # Half of timeouts actually booked
-                outcome = "timeout_after_success" if self.rng.random() < 0.5 else "timeout_not_booked"
+                outcome = (
+                    "timeout_after_success" if self.rng.random() < 0.5 else "timeout_not_booked"
+                )
             else:
                 outcome = "success"
 
@@ -492,7 +507,10 @@ class MockProviderService:
             return booking_id
 
         else:
-            self._idempotency_map[idempotency_key] = {"status": "failed", "error": f"Unknown outcome {outcome}"}
+            self._idempotency_map[idempotency_key] = {
+                "status": "failed",
+                "error": f"Unknown outcome {outcome}",
+            }
             raise ProviderMockError(f"Unexpected booking failure: {outcome}")
 
     def get_booking_status(self, idempotency_key: str) -> BookingStatusResult:

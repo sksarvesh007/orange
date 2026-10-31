@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
 from errand_agent.utils.clock import Clock, FrozenClock
 
 
@@ -54,7 +55,9 @@ class BudgetTracker:
     def check_time(self) -> None:
         elapsed = self.clock.monotonic() - self.start_monotonic
         if elapsed > self.config.max_wall_clock_seconds:
-            raise BudgetExceededError("wall_clock_seconds", self.config.max_wall_clock_seconds, elapsed)
+            raise BudgetExceededError(
+                "wall_clock_seconds", self.config.max_wall_clock_seconds, elapsed
+            )
 
     def record_model_turn(self) -> None:
         self.check_time()
@@ -66,7 +69,9 @@ class BudgetTracker:
         self.check_time()
         self.total_tool_calls += 1
         if self.total_tool_calls > self.config.max_tool_calls:
-            raise BudgetExceededError("total_tool_calls", self.config.max_tool_calls, self.total_tool_calls)
+            raise BudgetExceededError(
+                "total_tool_calls", self.config.max_tool_calls, self.total_tool_calls
+            )
 
         curr = self.tool_calls_by_tool.get(tool_name, 0) + 1
         self.tool_calls_by_tool[tool_name] = curr
@@ -77,7 +82,9 @@ class BudgetTracker:
         if tool_name == "get_booking_status":
             self.status_polls += 1
             if self.status_polls > self.config.max_status_polls:
-                raise BudgetExceededError("status_polls", self.config.max_status_polls, self.status_polls)
+                raise BudgetExceededError(
+                    "status_polls", self.config.max_status_polls, self.status_polls
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return {

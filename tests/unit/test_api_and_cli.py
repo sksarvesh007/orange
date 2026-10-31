@@ -1,10 +1,11 @@
 """Unit tests for FastAPI transport endpoints and CLI commands."""
 
 import json
+from pathlib import Path
+
 import pytest
 from click.testing import CliRunner
 from httpx import ASGITransport, AsyncClient
-from pathlib import Path
 
 from errand_agent.api.app import app, app_context
 from errand_agent.cli import cli
@@ -111,7 +112,9 @@ def test_cli_trace_commands(tmp_path: Path) -> None:
     assert "run_sample_123" in res_list.output
 
     # Pretty print
-    res_pretty = runner.invoke(cli, ["trace", "pretty", "run_sample_123", "--trace-dir", str(tmp_path)])
+    res_pretty = runner.invoke(
+        cli, ["trace", "pretty", "run_sample_123", "--trace-dir", str(tmp_path)]
+    )
     assert res_pretty.exit_code == 0
     assert "STATE_TRANSITION" in res_pretty.output
     assert "COLLECTING" in res_pretty.output

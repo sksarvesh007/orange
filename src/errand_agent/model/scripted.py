@@ -82,7 +82,9 @@ class ScriptedModel(ModelClient):
             return RespondAction(message="No matching providers currently available.")
 
         elif phase == "HOLDING":
-            return ProposeApprovalAction(confirmation_message="I have temporarily held this slot for you.")
+            return ProposeApprovalAction(
+                confirmation_message="I have temporarily held this slot for you."
+            )
 
         elif phase in ("AWAITING_APPROVAL", "EXECUTING", "VERIFYING", "DONE"):
             return RespondAction(message="Your request is being processed.")

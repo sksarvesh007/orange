@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Any
 
 from errand_agent.domain.enums import ActionType, BookingStatus, ConfirmationDecision
@@ -25,6 +25,7 @@ from errand_agent.utils.clock import Clock, FrozenClock
 
 class PolicyViolationError(Exception):
     """Raised when a side-effect is attempted without code-enforced approval."""
+
     pass
 
 
@@ -49,7 +50,11 @@ class PolicyGate:
             raise ValueError("Cannot build confirmation card: provider or slot missing")
 
         price = state.price or 0
-        action_type = ActionType(state.intent.value) if state.intent.value in [e.value for e in ActionType] else ActionType.BOOK
+        action_type = (
+            ActionType(state.intent.value)
+            if state.intent.value in [e.value for e in ActionType]
+            else ActionType.BOOK
+        )
         hold_id = state.hold.hold_id if state.hold else None
         booking_id = state.active_booking_id
         new_slot = state.get_slot_value("new_slot")
@@ -152,12 +157,7 @@ class PolicyGate:
 
             # Create approval
             now = self.clock.now()
-            expires_at = now + timedelta(minutes=10)
-            if state.hold:
-                try:
-                    expires_at = datetime.fromisoformat(state.hold.expires_at)
-                except Exception:
-                    pass
+            expires_at = state.hold.expires_at if state.hold else (now + timedelta(minutes=10))
 
             approval = ApprovalRecord(
                 approval_id=f"appr_{uuid.uuid4().hex[:12]}",
@@ -297,7 +297,7 @@ class SideEffectExecutor:
         if self.token.action_type != ActionType.BOOK:
             raise PolicyViolationError(f"Token is for {self.token.action_type}, not book")
 
-        # 1. Check if an attempt already exists for this deterministic key (Repeated confirmation)
+        # 1. Check if an attempt already exists for this deterministic key (Repeated confirmation / Retry)
         existing_attempt = await self.ledger_repo.get_by_idempotency_key(self.token.idempotency_key)
         if existing_attempt:
             if existing_attempt.status == BookingStatus.BOOKED and existing_attempt.booking_id:
@@ -317,6 +317,43 @@ class SideEffectExecutor:
                     )
                 )
                 return existing_attempt.booking_id
+
+            # Safe retry of previously attempted call with same key
+            if existing_attempt.status in (
+                BookingStatus.INTENT,
+                BookingStatus.EXECUTING,
+                BookingStatus.TIMEOUT,
+            ):
+                existing_attempt.attempt_count += 1
+                await self.ledger_repo.update_status(
+                    self.token.idempotency_key, BookingStatus.EXECUTING
+                )
+                try:
+                    booking_id = self.provider_service.book(
+                        hold_id=hold_id,
+                        idempotency_key=self.token.idempotency_key,
+                        user_id=self.token.user_id,
+                    )
+                    await self.ledger_repo.update_status(
+                        self.token.idempotency_key,
+                        status=BookingStatus.BOOKED,
+                        booking_id=booking_id,
+                    )
+                    return booking_id
+                except Exception as exc:
+                    from errand_agent.mocks.provider import ProviderTimeoutError
+
+                    status = (
+                        BookingStatus.TIMEOUT
+                        if isinstance(exc, ProviderTimeoutError)
+                        else BookingStatus.FAILED
+                    )
+                    await self.ledger_repo.update_status(
+                        self.token.idempotency_key,
+                        status=status,
+                        error=str(exc),
+                    )
+                    raise
 
         # 2. Write Ledger Attempt (status=INTENT) atomically with consuming approval
         now = self.clock.now()
@@ -370,7 +407,11 @@ class SideEffectExecutor:
             # Record failure in ledger
             from errand_agent.mocks.provider import ProviderTimeoutError
 
-            status = BookingStatus.TIMEOUT if isinstance(exc, ProviderTimeoutError) else BookingStatus.FAILED
+            status = (
+                BookingStatus.TIMEOUT
+                if isinstance(exc, ProviderTimeoutError)
+                else BookingStatus.FAILED
+            )
             await self.ledger_repo.update_status(
                 self.token.idempotency_key,
                 status=status,

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from errand_agent.domain.enums import ActionType, BookingStatus, Intent, Phase, Provenance
+from errand_agent.domain.enums import ActionType, BookingStatus, Provenance
 from errand_agent.domain.models import (
     ApprovalRecord,
     BookingAttemptRecord,
@@ -31,6 +31,7 @@ from errand_agent.store.schema import (
 
 class ConcurrencyError(Exception):
     """Raised when an optimistic lock version conflict occurs."""
+
     pass
 
 
@@ -83,7 +84,7 @@ class SessionRepository:
             .where(SessionModel.id == session_id, SessionModel.version == expected_version)
             .values(version=expected_version + 1, updated_at=now)
         )
-        res = await self.session.execute(stmt)
+        res = cast(CursorResult[Any], await self.session.execute(stmt))
         if res.rowcount == 0:
             raise ConcurrencyError(
                 f"Session {session_id} concurrency conflict: expected version {expected_version}"
@@ -251,7 +252,7 @@ class ApprovalRepository:
             )
             .values(consumed_at=now)
         )
-        res = await self.session.execute(stmt)
+        res = cast(CursorResult[Any], await self.session.execute(stmt))
         if res.rowcount == 0:
             raise ValueError(f"Approval {approval_id} is already consumed, voided, or not found")
 
@@ -296,9 +297,9 @@ class ApprovalRepository:
             )
             .values(voided_at=now, void_reason=reason)
         )
-        res = await self.session.execute(stmt)
+        res = cast(CursorResult[Any], await self.session.execute(stmt))
         await self.session.flush()
-        return res.rowcount
+        return int(res.rowcount or 0)
 
 
 class BookingLedgerRepository:
@@ -359,11 +360,13 @@ class BookingLedgerRepository:
     async def find_pending_or_executing(self) -> list[BookingAttemptRecord]:
         """Find attempts in INTENT, EXECUTING, or TIMEOUT for recovery."""
         stmt = select(BookingAttemptModel).where(
-            BookingAttemptModel.status.in_([
-                BookingStatus.INTENT.value,
-                BookingStatus.EXECUTING.value,
-                BookingStatus.TIMEOUT.value,
-            ])
+            BookingAttemptModel.status.in_(
+                [
+                    BookingStatus.INTENT.value,
+                    BookingStatus.EXECUTING.value,
+                    BookingStatus.TIMEOUT.value,
+                ]
+            )
         )
         res = await self.session.execute(stmt)
         models = res.scalars().all()
@@ -439,7 +442,9 @@ class MemoryRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_facts(self, user_id: str, include_deleted: bool = False) -> list[MemoryFactRecord]:
+    async def get_facts(
+        self, user_id: str, include_deleted: bool = False
+    ) -> list[MemoryFactRecord]:
         query = select(MemoryFactModel).where(MemoryFactModel.user_id == user_id)
         if not include_deleted:
             query = query.where(MemoryFactModel.deleted_at.is_(None))
@@ -529,12 +534,12 @@ class MemoryRepository:
             )
             .values(deleted_at=now)
         )
-        res = await self.session.execute(stmt)
+        res = cast(CursorResult[Any], await self.session.execute(stmt))
         # Add tombstone
         tombstone = MemoryTombstoneModel(user_id=user_id, key=key, tombstoned_at=now)
         await self.session.merge(tombstone)
         await self.session.flush()
-        return res.rowcount > 0
+        return bool((res.rowcount or 0) > 0)
 
     async def forget_all(self, user_id: str) -> int:
         now = datetime.now(timezone.utc)
@@ -550,14 +555,14 @@ class MemoryRepository:
             .where(MemoryFactModel.user_id == user_id, MemoryFactModel.deleted_at.is_(None))
             .values(deleted_at=now)
         )
-        res_del = await self.session.execute(stmt)
+        res_del = cast(CursorResult[Any], await self.session.execute(stmt))
 
         for k in keys:
             tomb = MemoryTombstoneModel(user_id=user_id, key=k, tombstoned_at=now)
             await self.session.merge(tomb)
 
         await self.session.flush()
-        return res_del.rowcount
+        return int(res_del.rowcount or 0)
 
     async def is_tombstoned(self, user_id: str, key: str) -> bool:
         stmt = select(MemoryTombstoneModel).where(

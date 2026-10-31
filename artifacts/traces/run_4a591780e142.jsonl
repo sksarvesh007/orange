@@ -1,0 +1,1 @@
+{"event_id": "b1ddb5b8-10c5-4e27-8fe4-28a9e5f599ae", "run_id": "run_4a591780e142", "session_id": "s_12", "user_id_hash": "895a883327552fbf", "timestamp": "2026-10-31T12:07:54.829229Z", "event_type": "memory_event", "data": {"command": "user_control", "reply": "I have updated your 'area' preference to 'Koramangala'."}}

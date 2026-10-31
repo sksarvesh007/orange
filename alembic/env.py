@@ -6,10 +6,9 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from alembic import context
-
-from errand_agent.store.base import Base
 import errand_agent.store.schema  # noqa: F401
+from alembic import context
+from errand_agent.store.base import Base
 
 config = context.config
 
@@ -20,7 +19,10 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url", "sqlite+aiosqlite:///./errand_agent.db"))
+    url = os.getenv(
+        "DATABASE_URL",
+        config.get_main_option("sqlalchemy.url", "sqlite+aiosqlite:///./errand_agent.db"),
+    )
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
     elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):

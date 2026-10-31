@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, TypeVar
 
@@ -36,6 +36,7 @@ class CircuitState(str, Enum):
 
 class CircuitBreakerOpenError(Exception):
     """Raised when call is rejected because the circuit breaker is OPEN."""
+
     pass
 
 
@@ -48,7 +49,9 @@ class CircuitBreakerConfig:
 class CircuitBreaker:
     """Circuit breaker per provider with state tracking."""
 
-    def __init__(self, config: CircuitBreakerConfig | None = None, clock: Clock | None = None) -> None:
+    def __init__(
+        self, config: CircuitBreakerConfig | None = None, clock: Clock | None = None
+    ) -> None:
         self.config = config or CircuitBreakerConfig()
         self.clock = clock or FrozenClock()
         self.state = CircuitState.CLOSED
@@ -180,7 +183,11 @@ class ProviderClient:
                     err_class = classify_error(exc)
 
                     # Only retry idempotent calls on transient failures
-                    if is_idempotent and err_class == ErrorClass.TRANSIENT and attempt < self.retry_policy.max_retries:
+                    if (
+                        is_idempotent
+                        and err_class == ErrorClass.TRANSIENT
+                        and attempt < self.retry_policy.max_retries
+                    ):
                         attempt += 1
                         # Backoff calculation
                         backoff = min(
@@ -188,7 +195,7 @@ class ProviderClient:
                             self.retry_policy.max_backoff_seconds,
                         )
                         if self.retry_policy.jitter:
-                            backoff *= (0.5 + self.rng.random() * 0.5)
+                            backoff *= 0.5 + self.rng.random() * 0.5
 
                         # Advance simulated clock rather than sleeping
                         self.clock.advance(backoff)
@@ -217,6 +224,7 @@ class ProviderClient:
         )
         # Convert dataclass to dict
         from dataclasses import asdict
+
         return sanitize_provider_detail(asdict(raw))
 
     # 3. list_bookings
@@ -227,6 +235,7 @@ class ProviderClient:
             is_idempotent=True,
         )
         from dataclasses import asdict
+
         return [asdict(b) for b in raw]
 
     # 4. hold_slot
@@ -237,6 +246,7 @@ class ProviderClient:
             is_idempotent=False,
         )
         from dataclasses import asdict
+
         return asdict(raw)
 
     # 5. book (REQUIRES APPROVAL TOKEN)
@@ -261,6 +271,7 @@ class ProviderClient:
             is_idempotent=True,
         )
         from dataclasses import asdict
+
         return asdict(raw)
 
     # 7. cancel (REQUIRES APPROVAL TOKEN)
@@ -277,7 +288,9 @@ class ProviderClient:
         )
 
     # 8. reschedule (REQUIRES APPROVAL TOKEN)
-    async def reschedule(self, token: ApprovalToken, booking_id: str, new_slot: str) -> dict[str, Any]:
+    async def reschedule(
+        self, token: ApprovalToken, booking_id: str, new_slot: str
+    ) -> dict[str, Any]:
         if not isinstance(token, ApprovalToken):
             raise TypeError("reschedule requires a valid ApprovalToken")
         raw = await self._execute_with_resilience(
@@ -290,4 +303,5 @@ class ProviderClient:
             is_idempotent=True,
         )
         from dataclasses import asdict
+
         return asdict(raw)
