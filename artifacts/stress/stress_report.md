@@ -1,9 +1,9 @@
 # Errand Agent Scalability & Stress Test Report
 
-**Execution Date**: 2026-10-31 12:38:01 UTC  
-**Environment**: Python 3.13.6 on darwin  
-**Concurrency Engine**: AsyncIO + HTTPX In-Process ASGI Transport  
-**Database**: SQLite with aiosqlite (WAL mode)  
+**Execution Date**: 2026-10-31 13:02:08 UTC
+**Environment**: Python 3.13.6 on darwin
+**Concurrency Engine**: AsyncIO + HTTPX In-Process ASGI Transport
+**Database**: SQLite with aiosqlite (WAL mode)
 
 ---
 
@@ -12,10 +12,10 @@
 | Metric | Baseline (Sequential) | 50 Concurrent Users | 50 Racing Confirms |
 | :--- | :--- | :--- | :--- |
 | **Total Requests** | 20 | 100 | 50 |
-| **Throughput (RPS)** | N/A | 141.9 req/s | High Concurrency Spike |
-| **Latency p50** | 2.83 ms | 188.56 ms | 70.54 ms |
-| **Latency p95** | 4.65 ms | 492.88 ms | 273.34 ms |
-| **Latency p99** | 16.34 ms | 677.23 ms | 491.21 ms |
+| **Throughput (RPS)** | N/A | 98.9 req/s | High Concurrency Spike |
+| **Latency p50** | 3.09 ms | 193.4 ms | 83.39 ms |
+| **Latency p95** | 3.88 ms | 625.44 ms | 275.89 ms |
+| **Latency p99** | 16.7 ms | 893.22 ms | 382.85 ms |
 | **Double Bookings** | **0** | **0** | **0 (EXACTLY 1 SUCCEEDED)** |
 | **Integrity Violations** | **0** | **0** | **0** |
 
@@ -40,13 +40,13 @@
 
 | Percentile | Baseline (ms) | 50 Concurrent Users (ms) |
 | :--- | :--- | :--- |
-| **Min** | 2.47 ms | 5.95 ms |
-| **p50** | 2.83 ms | 188.56 ms |
-| **p90** | 4.04 ms | 437.14 ms |
-| **p95** | 4.65 ms | 492.88 ms |
-| **p99** | 16.34 ms | 677.23 ms |
-| **Max** | 16.34 ms | 698.16 ms |
-| **Average** | 3.56 ms | 197.23 ms |
+| **Min** | 2.59 ms | 6.81 ms |
+| **p50** | 3.09 ms | 193.4 ms |
+| **p90** | 3.68 ms | 482.3 ms |
+| **p95** | 3.88 ms | 625.44 ms |
+| **p99** | 16.7 ms | 893.22 ms |
+| **Max** | 16.7 ms | 993.32 ms |
+| **Average** | 3.72 ms | 212.5 ms |
 
 ---
 
@@ -56,7 +56,7 @@ Under 50 concurrent simulated users, profiling identifies the following bottlene
 
 1. **Primary Bottleneck: SQLite Single-Writer Lock Serialization**
    - In SQLite, write transactions take an exclusive database lock. When 50 users simultaneously update workflow states, approvals, and ledger records, transactions queue up behind the SQLite write lock.
-   - *Impact*: Increases p99 tail latency from 16.34 ms to 677.23 ms.
+   - *Impact*: Increases p99 tail latency from 16.7 ms to 893.22 ms.
    - *Remedy*: In production, PostgreSQL with row-level locks (`FOR UPDATE`) completely removes this global serialization bottleneck.
 
 2. **Secondary Bottleneck: Synchronous In-Process JSONL Trace Disk I/O**
