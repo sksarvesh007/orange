@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trace Viewer - {{ summary.run_id }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #f97316;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            padding: 24px;
+            line-height: 1.5;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .header {
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .header h1 { font-size: 20px; font-weight: 700; color: var(--primary); margin-bottom: 8px; }
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+        .meta-item { display: flex; flex-direction: column; }
+        .meta-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+        .meta-value { font-size: 14px; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
+        .timeline { position: relative; margin-left: 20px; padding-left: 24px; border-left: 2px solid var(--border-color); }
+        .event-card {
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px;
+            position: relative;
+        }
+        .event-card::before {
+            content: '';
+            position: absolute;
+            left: -33px;
+            top: 20px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--primary);
+            border: 3px solid var(--bg-color);
+        }
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .badge {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            text-transform: uppercase;
+        }
+        .badge-state_transition { background: #3b82f620; color: #60a5fa; border: 1px solid #3b82f640; }
+        .badge-tool_call { background: #8b5cf620; color: #a78bfa; border: 1px solid #8b5cf640; }
+        .badge-policy_decision { background: #10b98120; color: #34d399; border: 1px solid #10b98140; }
+        .badge-approval_event { background: #f9731620; color: #fb923c; border: 1px solid #f9731640; }
+        .badge-injection_flag { background: #ef444420; color: #f87171; border: 1px solid #ef444440; }
+        .badge-unknown_error { background: #ef444420; color: #f87171; border: 1px solid #ef444440; }
+        .timestamp { font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+        pre {
+            background: #0b1120;
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: #cbd5e1;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Execution Trace: {{ summary.run_id }}</h1>
+            <div class="metadata-grid">
+                <div class="meta-item">
+                    <span class="meta-label">Session ID</span>
+                    <span class="meta-value">{{ summary.session_id }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">User Hash</span>
+                    <span class="meta-value">{{ summary.user_id_hash }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Outcome</span>
+                    <span class="meta-value" style="color: var(--primary);">{{ summary.outcome }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Total Events</span>
+                    <span class="meta-value">{{ summary.event_count }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="timeline">
+            {% for event in summary.events %}
+            <div class="event-card">
+                <div class="event-header">
+                    <span class="badge badge-{{ event.event_type }}">{{ event.event_type }}</span>
+                    <span class="timestamp">{{ event.timestamp }}</span>
+                </div>
+                <pre>{{ event.data_json }}</pre>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>
