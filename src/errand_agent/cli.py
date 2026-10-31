@@ -102,6 +102,18 @@ def list_traces(trace_dir: str) -> None:
 @click.option("--trace-dir", default="artifacts/traces", help="Trace directory path")
 def pretty_trace(run_id: str, trace_dir: str) -> None:
     """Pretty-print an execution trace."""
+    _print_trace(run_id, trace_dir)
+
+
+@trace_group.command("view")
+@click.argument("run_id")
+@click.option("--trace-dir", default="artifacts/traces", help="Trace directory path")
+def view_trace(run_id: str, trace_dir: str) -> None:
+    """View an execution trace."""
+    _print_trace(run_id, trace_dir)
+
+
+def _print_trace(run_id: str, trace_dir: str) -> None:
     p = Path(trace_dir) / f"{run_id}.jsonl"
     if not p.exists():
         click.echo(click.style(f"Trace {run_id} not found in {trace_dir}", fg="red"))
