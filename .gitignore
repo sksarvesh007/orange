@@ -16,3 +16,6 @@ build/
 *.sqlite
 .env
 .DS_Store
+artifacts/traces/run_*.jsonl
+artifacts/traces/fault_sweep/
+artifacts/traces/recovery_daemon.jsonl

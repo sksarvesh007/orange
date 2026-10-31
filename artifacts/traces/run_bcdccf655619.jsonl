@@ -1,1 +1,0 @@
-{"event_id": "1185f061-9598-491a-a5ca-802ea126e285", "run_id": "run_bcdccf655619", "session_id": "s_16", "user_id_hash": "fa5358b14a7adb82", "timestamp": "2026-10-31T12:10:00.892224Z", "event_type": "state_transition", "data": {"from": "COLLECTING", "to": "SEARCHING"}}

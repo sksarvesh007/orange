@@ -1,1 +1,0 @@
-{"event_id": "089f1ce8-e31e-4177-887e-9063b11cbbc7", "run_id": "run_84919ca9fb19", "session_id": "s_21", "user_id_hash": "81c77b958c0bc423", "timestamp": "2026-10-31T11:59:55.150726Z", "event_type": "policy_decision", "data": {"decision": "blocked", "reason": "Model emitted unauthorized direct book"}}

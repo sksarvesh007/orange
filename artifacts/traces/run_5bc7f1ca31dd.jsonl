@@ -1,1 +1,0 @@
-{"event_id": "f6de5fc1-eac6-45ca-a19c-2d2141f54d52", "run_id": "run_5bc7f1ca31dd", "session_id": "s_13_forget", "user_id_hash": "fa1f1e3d8d92acf9", "timestamp": "2026-10-31T11:42:28.851603Z", "event_type": "memory_event", "data": {"command": "user_control", "reply": "I didn't have any saved preference for 'area'."}}

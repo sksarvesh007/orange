@@ -1,1 +1,0 @@
-{"event_id": "668fbb3d-78b4-4b57-afc1-f76b6e46256f", "run_id": "run_10b6f1cc2d67", "session_id": "s_13_forget", "user_id_hash": "fa1f1e3d8d92acf9", "timestamp": "2026-10-31T12:10:00.829616Z", "event_type": "memory_event", "data": {"command": "user_control", "reply": "I have forgotten your preference for 'area'."}}

@@ -33,23 +33,6 @@ services:
       timeout: 3s
       retries: 3
 
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: errand_agent_worker
-    restart: unless-stopped
-    entrypoint: ["python3", "-m", "errand_agent.worker"]
-    environment:
-      - APP_ENV=production
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/errand_agent
-      - REDIS_URL=redis://redis:6379/0
-      - LOG_LEVEL=INFO
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
   postgres:
     image: postgres:16-alpine
