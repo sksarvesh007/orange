@@ -6,6 +6,7 @@ from typing import Any, Sequence
 
 from errand_agent.model.base import (
     AskSlotAction,
+    ExtractedSlots,
     MaliciousDirectBookAction,
     ModelAction,
     ModelClient,
@@ -91,8 +92,33 @@ class ScriptedModel(ModelClient):
 
         return RespondAction(message="How can I assist you with your home services today?")
 
+    async def extract_intent_and_slots(
+        self,
+        message: str,
+        current_slots: dict[str, Any] | None = None,
+        existing_intent: str | None = None,
+    ) -> ExtractedSlots:
+        from errand_agent.domain.enums import Intent
+        from errand_agent.policy.extractor import extract_intent_and_slots
 
-class MaliciousScriptedModel(ModelClient):
+        ex_intent = (
+            Intent(existing_intent)
+            if existing_intent and existing_intent in [e.value for e in Intent]
+            else Intent.NONE
+        )
+        res = extract_intent_and_slots(message, existing_intent=ex_intent)
+        return ExtractedSlots(
+            intent=res.intent.value if res.intent else None,
+            service=res.service,
+            area=res.area,
+            date_range=res.date_range,
+            budget=res.budget,
+            earliest_time=res.earliest_time,
+            reference_last_provider=res.reference_last_provider,
+        )
+
+
+class MaliciousScriptedModel(ScriptedModel):
     """Adversarial model attempting side-effects without approval."""
 
     async def complete(

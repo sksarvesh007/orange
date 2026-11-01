@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from pydantic import TypeAdapter, ValidationError
 
 from errand_agent.model.base import (
+    ExtractedSlots,
     ModelAction,
     ModelClient,
     RespondAction,
@@ -35,6 +36,26 @@ You must reply with a valid JSON object matching one of the allowed actions:
 5. {"action": "propose_approval", "confirmation_message": "<msg>"}
 6. {"action": "confirm_inferred_fact", "key": "<key>", "value": "<val>", "question": "<q>"}
 7. {"action": "respond", "message": "<msg>"}
+"""
+
+EXTRACTION_SYSTEM_PROMPT = """You are an advanced Natural Language Understanding engine for an errand booking assistant in India.
+Analyze the user utterance, dialogue context, and currently collected slots.
+Extract the user intent and slots dynamically into a structured JSON object.
+
+Allowed intents:
+- 'book': User wants to find, hire, or book a home service.
+- 'reschedule': User wants to move or reschedule an existing service/booking.
+- 'cancel': User wants to cancel an existing booking.
+- 'none': General chat or greeting.
+
+Output JSON with keys:
+- "intent": "book" | "reschedule" | "cancel" | "none" | null
+- "service": name of the service (e.g. "plumber", "electrician", "ac servicing", "carpentry", "cleaning") or null
+- "area": locality or neighborhood mentioned (e.g. "Indiranagar", "Koramangala", "HSR Layout") or null
+- "date_range": desired date, day, or time window (e.g. "Saturday morning", "this week", "tomorrow afternoon") or null
+- "budget": maximum price in ₹ as an integer or null (e.g. 1500)
+- "earliest_time": time constraint if mentioned (e.g. "10:00 AM") or null
+- "reference_last_provider": true if user refers to "same as last time" / "previous provider", else false
 """
 
 
@@ -123,3 +144,84 @@ class LLMClient(ModelClient):
             )
         except Exception as exc:
             return RespondAction(message=f"LLM communication error: {str(exc)}")
+
+    async def extract_intent_and_slots(
+        self,
+        message: str,
+        current_slots: dict[str, Any] | None = None,
+        existing_intent: str | None = None,
+    ) -> ExtractedSlots:
+        """Dynamically extract intent and slots from user utterance using LLM."""
+        if self.api_key:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": self.model_name,
+                "messages": [
+                    {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"User Utterance: {json.dumps(message)}\n"
+                            f"Currently collected slots: {json.dumps(current_slots or {})}\n"
+                            f"Existing intent: {existing_intent or 'none'}"
+                        ),
+                    },
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0,
+            }
+            try:
+                if self._http_client:
+                    resp = await self._http_client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=self.timeout_seconds,
+                    )
+                else:
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.post(
+                            f"{self.base_url}/chat/completions",
+                            headers=headers,
+                            json=payload,
+                            timeout=self.timeout_seconds,
+                        )
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    raw_content = data["choices"][0]["message"]["content"]
+                    parsed = json.loads(raw_content)
+                    return ExtractedSlots(
+                        intent=parsed.get("intent"),
+                        service=parsed.get("service"),
+                        area=parsed.get("area"),
+                        date_range=parsed.get("date_range"),
+                        budget=parsed.get("budget"),
+                        earliest_time=parsed.get("earliest_time"),
+                        reference_last_provider=bool(parsed.get("reference_last_provider", False)),
+                    )
+            except Exception:
+                pass
+
+        # Fallback to structural extraction if LLM is offline or unconfigured
+        from errand_agent.domain.enums import Intent
+        from errand_agent.policy.extractor import extract_intent_and_slots
+
+        ex_intent = (
+            Intent(existing_intent)
+            if existing_intent and existing_intent in [e.value for e in Intent]
+            else Intent.NONE
+        )
+        res = extract_intent_and_slots(message, existing_intent=ex_intent)
+        return ExtractedSlots(
+            intent=res.intent.value if res.intent else None,
+            service=res.service,
+            area=res.area,
+            date_range=res.date_range,
+            budget=res.budget,
+            earliest_time=res.earliest_time,
+            reference_last_provider=res.reference_last_provider,
+        )

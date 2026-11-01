@@ -116,6 +116,18 @@ class SanitizedStateView(BaseModel):
     inferred_facts: dict[str, str] = Field(default_factory=dict)
 
 
+class ExtractedSlots(BaseModel):
+    """Dynamic extracted intent and slots from user utterance."""
+
+    intent: str | None = None
+    service: str | None = None
+    area: str | None = None
+    date_range: str | None = None
+    budget: int | None = None
+    earliest_time: str | None = None
+    reference_last_provider: bool = False
+
+
 class ModelClient(ABC):
     """Abstract model client port."""
 
@@ -126,4 +138,14 @@ class ModelClient(ABC):
         tools_schema: Sequence[dict[str, Any]] | None = None,
     ) -> ModelAction:
         """Produce the next action given the sanitized state view."""
+        pass
+
+    @abstractmethod
+    async def extract_intent_and_slots(
+        self,
+        message: str,
+        current_slots: dict[str, Any] | None = None,
+        existing_intent: str | None = None,
+    ) -> ExtractedSlots:
+        """Extract intent and slots from user utterance dynamically."""
         pass

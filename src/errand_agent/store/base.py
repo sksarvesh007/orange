@@ -28,8 +28,10 @@ def create_engine_and_sessionmaker(
     """Factory to create async engine and sessionmaker."""
     kwargs: dict[str, Any] = {"echo": echo}
 
-    # Only pass pool arguments to non-sqlite drivers (or when pool_size is specified)
-    if "sqlite" not in database_url and pool_size is not None:
+    # Set busy_timeout for sqlite to avoid database locked errors under high concurrency
+    if "sqlite" in database_url:
+        kwargs["connect_args"] = {"timeout": 60.0}
+    elif pool_size is not None:
         kwargs["pool_size"] = pool_size
         if max_overflow is not None:
             kwargs["max_overflow"] = max_overflow

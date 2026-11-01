@@ -38,7 +38,6 @@ from errand_agent.policy.extractor import (
     ForgetAllMemoryCommand,
     ForgetFactCommand,
     InspectMemoryCommand,
-    extract_intent_and_slots,
     parse_memory_command,
 )
 from errand_agent.policy.gate import PolicyGate, SideEffectExecutor
@@ -125,11 +124,20 @@ class ErrandOrchestrator:
             return "Provider"
         return name.replace("<untrusted_data>", "").replace("</untrusted_data>", "").strip()
 
-    def _extract_intent_and_slots(self, message: str, state: WorkflowState) -> None:
-        """Deterministic extractor for intent and slots from user utterance using structural lexing."""
-        extracted = extract_intent_and_slots(message, existing_intent=state.intent)
-        if extracted.intent and state.intent == Intent.NONE:
-            state.intent = extracted.intent
+    async def _extract_intent_and_slots(self, message: str, state: WorkflowState) -> None:
+        """Dynamic extractor for intent and slots from user utterance using ModelClient."""
+        current_slots = {k: v.value for k, v in state.slots.items()}
+        extracted = await self.model_client.extract_intent_and_slots(
+            message=message,
+            current_slots=current_slots,
+            existing_intent=state.intent.value if state.intent else None,
+        )
+        if (
+            extracted.intent
+            and state.intent == Intent.NONE
+            and extracted.intent in [e.value for e in Intent]
+        ):
+            state.intent = Intent(extracted.intent)
 
         if extracted.service:
             state.set_slot("service", extracted.service, source=SlotSource.USER)
@@ -235,7 +243,7 @@ class ErrandOrchestrator:
 
         try:
             # 4. Extract slots and intent from current message
-            self._extract_intent_and_slots(message, state)
+            await self._extract_intent_and_slots(message, state)
 
             # 5. Main state machine dispatch loop
             while True:
