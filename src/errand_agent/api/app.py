@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -43,6 +44,8 @@ from errand_agent.tools.provider_client import ProviderClient
 from errand_agent.trace.langfuse import LangfuseSink
 from errand_agent.trace.sink import CompositeSink, JsonlSink, NullSink, TraceSink
 from errand_agent.utils.clock import Clock, SystemClock
+
+load_dotenv()
 
 
 class ChatRequest(BaseModel):

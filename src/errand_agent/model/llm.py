@@ -12,6 +12,7 @@ import os
 from typing import Any, Sequence
 
 import httpx
+from dotenv import load_dotenv
 from pydantic import TypeAdapter, ValidationError
 
 from errand_agent.model.base import (
@@ -48,7 +49,8 @@ class LLMClient(ModelClient):
         timeout_seconds: float = 10.0,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
+        load_dotenv()
+        self.api_key = api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")
         raw_url = base_url or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
         self.base_url = raw_url.rstrip("/")
         self.model_name = model_name

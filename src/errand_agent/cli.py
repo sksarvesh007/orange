@@ -8,9 +8,12 @@ import uuid
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
 from httpx import ASGITransport, AsyncClient
 
 from errand_agent.api.app import app
+
+load_dotenv()
 
 
 @click.group()
