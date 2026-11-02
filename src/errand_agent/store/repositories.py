@@ -273,7 +273,7 @@ class ApprovalRepository:
             created_at=attempt.created_at,
             updated_at=attempt.updated_at,
         )
-        self.session.add(model)
+        await self.session.merge(model)
         await self.session.flush()
 
     async def void(self, approval_id: str, reason: str) -> None:

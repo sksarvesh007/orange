@@ -323,6 +323,7 @@ class SideEffectExecutor:
                 BookingStatus.INTENT,
                 BookingStatus.EXECUTING,
                 BookingStatus.TIMEOUT,
+                BookingStatus.FAILED,
             ):
                 existing_attempt.attempt_count += 1
                 await self.ledger_repo.update_status(

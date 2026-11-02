@@ -25,8 +25,9 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
 from errand_agent.agent.orchestrator import OrchestratorTurnResult
-from errand_agent.domain.enums import ActionType, ConfirmationDecision, Phase
+from errand_agent.domain.enums import ActionType, BookingStatus, ConfirmationDecision, Phase
 from errand_agent.domain.state import HoldInfo, WorkflowState
+from errand_agent.mocks.provider import ProviderTimeoutError, SlotTakenError
 from errand_agent.policy.gate import PolicyGate, SideEffectExecutor
 from errand_agent.store.repositories import (
     ApprovalRepository,
@@ -145,16 +146,19 @@ async def execute_confirmed_booking_impl(context: ErrandAgentContext) -> str:
         )
 
     # Acquire capability token
-    token = await context.policy_gate.verify_and_issue_token(
-        user_id=context.user_id,
-        session_id=context.session_id,
-        action_type=ActionType.BOOK,
-        provider_id=context.state.selected_provider_id or "",
-        slot=context.state.selected_slot or "",
-        price=context.state.price or 0,
-        hold_id=context.state.hold.hold_id if context.state.hold else None,
-        run_id=context.run_id,
-    )
+    try:
+        token = await context.policy_gate.verify_and_issue_token(
+            user_id=context.user_id,
+            session_id=context.session_id,
+            action_type=ActionType.BOOK,
+            provider_id=context.state.selected_provider_id or "",
+            slot=context.state.selected_slot or "",
+            price=context.state.price or 0,
+            hold_id=context.state.hold.hold_id if context.state.hold else None,
+            run_id=context.run_id,
+        )
+    except Exception as exc:
+        return f"POLICY VIOLATION: Approval verification failed: {exc}"
 
     executor = SideEffectExecutor(
         token=token,
@@ -166,16 +170,42 @@ async def execute_confirmed_booking_impl(context: ErrandAgentContext) -> str:
         run_id=context.run_id,
     )
 
-    booking_id = await executor.execute_book(
-        hold_id=context.state.hold.hold_id if context.state.hold else "",
-        provider_id=context.state.selected_provider_id or "",
-        slot=context.state.selected_slot or "",
-    )
-
-    context.state.verified_booking_id = booking_id
-    context.state.transition_to(Phase.DONE, reason="Booking verified successfully")
-
-    return f"Booking Confirmed! Booking Reference ID: {booking_id}"
+    context.state.transition_to(Phase.EXECUTING, reason="Executing booking")
+    try:
+        booking_id = await executor.execute_book(
+            hold_id=context.state.hold.hold_id if context.state.hold else "",
+            provider_id=context.state.selected_provider_id or "",
+            slot=context.state.selected_slot or "",
+        )
+        context.state.verified_booking_id = booking_id
+        context.state.transition_to(Phase.DONE, reason="Booking verified successfully")
+        return f"Booking Confirmed! Booking Reference ID: {booking_id}"
+    except SlotTakenError:
+        context.state.transition_to(Phase.PRESENTING, reason="Slot taken during booking")
+        context.state.hold = None
+        return (
+            "The selected time slot was unfortunately claimed by another user just now. "
+            "Let me find alternative available slots for you."
+        )
+    except ProviderTimeoutError:
+        status_res = await context.provider_client.get_booking_status(token.idempotency_key)
+        if status_res.get("status") == "booked" and status_res.get("booking_id"):
+            b_id = str(status_res["booking_id"])
+            context.state.verified_booking_id = b_id
+            await context.ledger_repo.update_status(
+                token.idempotency_key, status=BookingStatus.BOOKED, booking_id=b_id
+            )
+            context.state.transition_to(Phase.DONE, reason="Reconciliation verified booking")
+            return f"Booking verified! Booking Reference ID: {b_id}"
+        else:
+            context.state.transition_to(Phase.NEEDS_HUMAN, reason="Booking timeout unresolved")
+            return (
+                f"We experienced a timeout with the provider. "
+                f"Our support team has been flagged to verify your booking (Reference: {token.idempotency_key[:12]})."
+            )
+    except Exception as exc:
+        context.state.transition_to(Phase.FAILED, reason=str(exc))
+        return f"Booking could not be completed: {exc}"
 
 
 @function_tool

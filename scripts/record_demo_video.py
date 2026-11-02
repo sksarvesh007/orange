@@ -13,10 +13,9 @@ Produces: artifacts/videos/orange_errand_agent_demo.mp4
 from __future__ import annotations
 
 import asyncio
-import os
 import subprocess
-import sys
 from pathlib import Path
+
 from playwright.async_api import Page, async_playwright
 
 VIEWPORT = {"width": 1920, "height": 1080}
@@ -108,7 +107,7 @@ async def click_element(page: Page, selector: str) -> None:
 
 async def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"🎬 Starting Demo Video Recording...")
+    print("🎬 Starting Demo Video Recording...")
     print(f"   Target URL: {URL}")
     print(f"   Viewport: {VIEWPORT['width']}x{VIEWPORT['height']}")
 
@@ -163,7 +162,9 @@ async def main() -> None:
 
         # Scroll trace to highlight verified booking & ledger lock
         print("  Inspecting verified booking in trace pane...")
-        await page.evaluate("document.getElementById('trace-content').scrollBy({ top: 300, behavior: 'smooth' })")
+        await page.evaluate(
+            "document.getElementById('trace-content').scrollBy({ top: 300, behavior: 'smooth' })"
+        )
         await asyncio.sleep(3.0)
 
         # ====================================================================
@@ -174,7 +175,9 @@ async def main() -> None:
         await asyncio.sleep(4.5)
 
         # Highlight sanitized rejection in trace
-        await page.evaluate("document.getElementById('trace-content').scrollBy({ top: 400, behavior: 'smooth' })")
+        await page.evaluate(
+            "document.getElementById('trace-content').scrollBy({ top: 400, behavior: 'smooth' })"
+        )
         await asyncio.sleep(3.5)
 
         # ====================================================================
@@ -221,7 +224,7 @@ async def main() -> None:
                 "+faststart",
                 str(FINAL_MP4),
             ]
-            subprocess.run(cmd, check=True)
+            await asyncio.to_thread(subprocess.run, cmd, check=True)
 
             file_size_mb = FINAL_MP4.stat().st_size / (1024 * 1024)
             print(f"🎉 Final MP4 generated successfully: {FINAL_MP4} ({file_size_mb:.2f} MB)")

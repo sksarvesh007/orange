@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -51,6 +52,7 @@ from errand_agent.trace.sink import CompositeSink, JsonlSink, NullSink, TraceSin
 from errand_agent.utils.clock import Clock, SystemClock
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
@@ -205,37 +207,46 @@ async def chat(
         os.getenv("OPENAI_API_KEY")
     )
 
+    result = None
     if use_agent_sdk:
-        sess_rec = await sess_repo.get(payload.session_id)
-        if not sess_rec:
-            await sess_repo.create(payload.session_id, payload.user_id)
+        try:
+            sess_rec = await sess_repo.get(payload.session_id)
+            if not sess_rec:
+                await sess_repo.create(payload.session_id, payload.user_id)
 
-        state = await state_repo.get(payload.session_id)
-        if not state:
-            state = WorkflowState(
+            state = await state_repo.get(payload.session_id)
+            if not state:
+                state = WorkflowState(
+                    session_id=payload.session_id,
+                    user_id=payload.user_id,
+                    intent=Intent.NONE,
+                )
+            run_id = f"run_{uuid.uuid4().hex[:12]}"
+            ctx = ErrandAgentContext(
                 session_id=payload.session_id,
                 user_id=payload.user_id,
-                intent=Intent.NONE,
+                state=state,
+                policy_gate=gate,
+                provider_client=app_context.provider_client,
+                approval_repo=approval_repo,
+                ledger_repo=ledger_repo,
+                audit_repo=audit_repo,
+                trace_sink=app_context.trace_sink,
+                clock=app_context.clock,
+                run_id=run_id,
             )
-        run_id = f"run_{uuid.uuid4().hex[:12]}"
-        ctx = ErrandAgentContext(
-            session_id=payload.session_id,
-            user_id=payload.user_id,
-            state=state,
-            policy_gate=gate,
-            provider_client=app_context.provider_client,
-            approval_repo=approval_repo,
-            ledger_repo=ledger_repo,
-            audit_repo=audit_repo,
-            trace_sink=app_context.trace_sink,
-            clock=app_context.clock,
-            run_id=run_id,
-        )
-        agent = build_openai_errand_agent()
-        result = await run_openai_agent_turn(agent, ctx, payload.message)
-        await state_repo.save(ctx.state)
-        await app_context.trace_sink.flush()
-    else:
+            agent = build_openai_errand_agent()
+            result = await run_openai_agent_turn(agent, ctx, payload.message)
+            await state_repo.save(ctx.state)
+            await app_context.trace_sink.flush()
+        except Exception as exc:
+            logger.warning(
+                f"OpenAI agent invocation failed ({type(exc).__name__}: {exc}); gracefully falling back to deterministic orchestrator"
+            )
+            await session.rollback()
+            result = None
+
+    if result is None:
         orchestrator = ErrandOrchestrator(
             session_repo=sess_repo,
             state_repo=state_repo,
