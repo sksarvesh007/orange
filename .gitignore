@@ -19,3 +19,6 @@ build/
 artifacts/traces/run_*.jsonl
 artifacts/traces/fault_sweep/
 artifacts/traces/recovery_daemon.jsonl
+artifacts/traces/*.jsonl
+artifacts/videos/*.webm
+
