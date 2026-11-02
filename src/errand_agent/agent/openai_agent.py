@@ -241,10 +241,16 @@ async def hold_service_slot(
 
 
 @function_tool
-def generate_approval_card(ctx: RunContextWrapper[ErrandAgentContext]) -> str:
+def generate_approval_card(
+    ctx: RunContextWrapper[ErrandAgentContext],
+    reason: str = "Card generated for user confirmation",
+) -> str:
     """Generate the deterministic confirmation card and capability token.
 
     MUST be called before any booking side effect. Present the returned text to the user.
+
+    Args:
+        reason: Optional summary reason for generating the confirmation card
     """
     return generate_approval_card_impl(ctx.context)
 
@@ -252,11 +258,15 @@ def generate_approval_card(ctx: RunContextWrapper[ErrandAgentContext]) -> str:
 @function_tool
 async def execute_confirmed_booking(
     ctx: RunContextWrapper[ErrandAgentContext],
+    confirmation_token: str = "confirmed",
 ) -> str:
     """Execute the final booking with the provider.
 
     SECURITY RULE: This tool strictly requires verified user approval.
     If the user has not affirmed the card, this tool returns a policy violation error.
+
+    Args:
+        confirmation_token: Optional confirmation identifier
     """
     return await execute_confirmed_booking_impl(ctx.context)
 
@@ -432,19 +442,55 @@ async def execute_booking_tool_direct(context: ErrandAgentContext) -> str:
         run_id=context.run_id,
     )
 
-    booking_id = await executor.execute_book(
-        hold_id=context.state.hold.hold_id if context.state.hold else "",
-        provider_id=context.state.selected_provider_id or "",
-        slot=context.state.selected_slot or "",
-    )
+    try:
+        booking_id = await executor.execute_book(
+            hold_id=context.state.hold.hold_id if context.state.hold else "",
+            provider_id=context.state.selected_provider_id or "",
+            slot=context.state.selected_slot or "",
+        )
 
-    context.state.verified_booking_id = booking_id
-    context.state.transition_to(Phase.DONE, reason="Booking verified successfully")
+        context.state.verified_booking_id = booking_id
+        context.state.transition_to(Phase.DONE, reason="Booking verified successfully")
 
-    clean_name = (
-        (context.state.selected_provider_name or "Provider")
-        .replace("<untrusted_data>", "")
-        .replace("</untrusted_data>", "")
-        .strip()
-    )
-    return f"Booking confirmed! Booked {clean_name} for {context.state.selected_slot} at ₹{context.state.price:,}. Booking ID: {booking_id}."
+        clean_name = (
+            (context.state.selected_provider_name or "Provider")
+            .replace("<untrusted_data>", "")
+            .replace("</untrusted_data>", "")
+            .strip()
+        )
+        return (
+            f"Booking confirmed! Booked {clean_name} for {context.state.selected_slot} at ₹{context.state.price:,}. "
+            f"Booking ID: {booking_id}."
+        )
+    except SlotTakenError:
+        context.state.transition_to(Phase.PRESENTING, reason="Slot taken during booking")
+        context.state.hold = None
+        return (
+            "The selected time slot was unfortunately claimed by another user just now. "
+            "Let me find alternative available slots for you."
+        )
+    except ProviderTimeoutError:
+        status_res = await context.provider_client.get_booking_status(token.idempotency_key)
+        if status_res.get("status") == "booked" and status_res.get("booking_id"):
+            b_id = str(status_res["booking_id"])
+            context.state.verified_booking_id = b_id
+            await context.ledger_repo.update_status(
+                token.idempotency_key, status=BookingStatus.BOOKED, booking_id=b_id
+            )
+            context.state.transition_to(Phase.DONE, reason="Reconciliation verified booking")
+            clean_name = (
+                (context.state.selected_provider_name or "Provider")
+                .replace("<untrusted_data>", "")
+                .replace("</untrusted_data>", "")
+                .strip()
+            )
+            return (
+                f"Booking verified on status check! Booked {clean_name} for {context.state.selected_slot} at "
+                f"₹{context.state.price:,}. Booking ID: {b_id}."
+            )
+        else:
+            context.state.transition_to(Phase.NEEDS_HUMAN, reason="Booking timeout unresolved")
+            return (
+                f"We experienced a timeout with the provider. "
+                f"Our support team has been flagged to verify your booking (Reference: {token.idempotency_key[:12]})."
+            )

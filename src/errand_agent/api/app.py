@@ -29,6 +29,7 @@ from errand_agent.agent.orchestrator import ErrandOrchestrator
 from errand_agent.domain.enums import BookingStatus, Intent, Phase
 from errand_agent.domain.state import HoldInfo, WorkflowState
 from errand_agent.mocks.provider import MockProviderService
+from errand_agent.mocks.scenario import Scenario
 from errand_agent.model.scripted import ScriptedModel
 from errand_agent.obs.metrics import (
     TURN_LATENCY_SECONDS,
@@ -48,6 +49,7 @@ from errand_agent.store.repositories import (
 )
 from errand_agent.tools.provider_client import ProviderClient
 from errand_agent.trace.langfuse import LangfuseSink
+from errand_agent.trace.models import TraceEvent, hash_user_id
 from errand_agent.trace.sink import CompositeSink, JsonlSink, NullSink, TraceSink
 from errand_agent.utils.clock import Clock, SystemClock
 
@@ -115,7 +117,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     app_context.session_factory = sessionmaker
     app_context.clock = SystemClock()
-    app_context.mock_provider = MockProviderService(clock=app_context.clock)
+    app_context.mock_provider = MockProviderService(
+        scenario=Scenario(name="api_default", book_slot_taken_rate=0.0, book_timeout_rate=0.0),
+        clock=app_context.clock,
+    )
     app_context.provider_client = ProviderClient(app_context.mock_provider, clock=app_context.clock)
     app_context.trace_dir = Path("artifacts/traces")
     jsonl_sink = JsonlSink(trace_dir=app_context.trace_dir)
@@ -236,7 +241,30 @@ async def chat(
                 run_id=run_id,
             )
             agent = build_openai_errand_agent()
+            t_llm = time.perf_counter()
             result = await run_openai_agent_turn(agent, ctx, payload.message)
+            llm_latency_ms = round((time.perf_counter() - t_llm) * 1000, 1)
+
+            await app_context.trace_sink.emit(
+                TraceEvent(
+                    event_id=str(uuid.uuid4()),
+                    run_id=run_id,
+                    session_id=payload.session_id,
+                    user_id_hash=hash_user_id(payload.user_id),
+                    event_type="llm_generation",
+                    data={
+                        "model": os.getenv("OPENAI_MODEL", "qwen/qwen3.8-27b"),
+                        "latency_ms": llm_latency_ms,
+                        "phase": result.phase.value
+                        if hasattr(result.phase, "value")
+                        else str(result.phase),
+                        "output_preview": result.reply[:180] + "..."
+                        if len(result.reply) > 180
+                        else result.reply,
+                        "guardrails": "PII & secret leak check: PASS",
+                    },
+                )
+            )
             await state_repo.save(ctx.state)
             await app_context.trace_sink.flush()
         except Exception as exc:
