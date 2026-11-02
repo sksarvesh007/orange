@@ -95,6 +95,26 @@ External provider endpoints can fail, time out, or drop connections.
 - **Database unique constraint**: A unique index on `(session_id, idempotency_key)` ensures that concurrent requests cannot trigger multiple booking calls for the same action.
 - **Timeout reconciliation**: If a network timeout occurs during execution, the status remains `TIMEOUT` until the agent checks `GET /bookings/{id}` or `GET /providers/{id}/schedule` to verify whether the slot was claimed before failing or retrying.
 
+### Timeout-after-success trace excerpt
+Raw trace file: [`artifacts/trace_timeout_after_success.jsonl`](../artifacts/trace_timeout_after_success.jsonl)
+
+When a call to `/book` times out after committing the reservation server-side, the agent reconciles the outcome before reporting or retrying:
+
+```json
+// 1. Approval granted upon user affirmation
+{"event_type": "approval_event", "data": {"event": "approval_granted", "approval_id": "appr_6fba3b97ab54"}}
+
+// 2. Transition to EXECUTING
+{"event_type": "state_transition", "data": {"from": "AWAITING_APPROVAL", "to": "EXECUTING"}}
+
+// 3. Approval consumed atomically before outbound dispatch
+{"event_type": "approval_event", "data": {"event": "approval_consumed", "approval_id": "appr_6fba3b97ab54"}}
+
+// 4. Provider times out; agent transitions to VERIFYING and checks get_booking_status()
+{"event_type": "state_transition", "data": {"from": "EXECUTING", "to": "VERIFYING"}}
+```
+In `VERIFYING`, the status check discovers the provider recorded the reservation (`status: "booked"`). The agent records the booking ID in the ledger and transitions to `DONE` without placing a duplicate booking.
+
 ---
 
 ## 5. Untrusted content and prompt injection defense
