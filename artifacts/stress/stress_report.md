@@ -1,88 +1,77 @@
-# Errand Agent Scalability & Stress Test Report
+# Scalability and Stress Test Report
 
-**Execution Date**: 2026-10-31 13:02:08 UTC
-**Environment**: Python 3.13.6 on darwin
-**Concurrency Engine**: AsyncIO + HTTPX In-Process ASGI Transport
-**Database**: SQLite with aiosqlite (WAL mode)
+- Date: 2026-10-31 13:02:08 UTC
+- Environment: Python 3.13.6 on macOS
+- Concurrency engine: AsyncIO with HTTPX ASGI transport
+- Database: SQLite with aiosqlite (WAL mode)
 
 ---
 
-## 1. Executive Summary
+## 1. Summary of results
 
-| Metric | Baseline (Sequential) | 50 Concurrent Users | 50 Racing Confirms |
+| Metric | Sequential baseline | 50 concurrent users | 50 racing confirmations |
 | :--- | :--- | :--- | :--- |
-| **Total Requests** | 20 | 100 | 50 |
-| **Throughput (RPS)** | N/A | 98.9 req/s | High Concurrency Spike |
-| **Latency p50** | 3.09 ms | 193.4 ms | 83.39 ms |
-| **Latency p95** | 3.88 ms | 625.44 ms | 275.89 ms |
-| **Latency p99** | 16.7 ms | 893.22 ms | 382.85 ms |
-| **Double Bookings** | **0** | **0** | **0 (EXACTLY 1 SUCCEEDED)** |
-| **Integrity Violations** | **0** | **0** | **0** |
+| Total requests | 20 | 100 | 50 |
+| Throughput | N/A | 98.9 req/s | Spike test |
+| Latency p50 | 3.09 ms | 193.4 ms | 83.39 ms |
+| Latency p95 | 3.88 ms | 625.44 ms | 275.89 ms |
+| Latency p99 | 16.7 ms | 893.22 ms | 382.85 ms |
+| Double bookings | 0 | 0 | 0 (1 succeeded) |
+| Integrity violations | 0 | 0 | 0 |
 
 ---
 
-## 2. Invariant Verification Under High Concurrency
+## 2. Invariant verification under concurrency
 
-1. **Zero Double-Bookings Guarantee (Must-Have #1)**:
-   - When 50 concurrent requests simultaneously submitted `"Yes, confirm"` for the same session's pending booking, **exactly 1 request succeeded** (`BK-1051`).
-   - All other 49 racing requests were deterministically rejected with policy denial because the approval record was atomically marked `consumed_at` inside the single database transaction.
-   - **Double-Booking Count**: **0** (Invariant Holds 100%).
+### Double-booking prevention
+When 50 concurrent requests simultaneously submitted "Yes, confirm" for the same pending booking, exactly one request succeeded (`BK-1051`). The other 49 requests were rejected because the approval record was marked consumed in the first transaction.
 
-2. **Idempotency Under Concurrent Retries (Must-Have #7)**:
-   - Concurrent retries using the same idempotency key or session state returned consistent, deterministic outcomes without duplicate ledger records.
+### Idempotency across retries
+Retrying with the same idempotency key returned the existing result without creating additional ledger records.
 
-3. **Approval Token Single-Use**:
-   - Atomic consumption (`UPDATE approvals SET consumed_at = :now WHERE consumed_at IS NULL`) guarantees that two concurrent threads cannot both obtain execution authority for the same approval.
+### Single-use approval tokens
+The update query (`UPDATE approvals SET consumed_at = :now WHERE consumed_at IS NULL`) prevents two concurrent workers from both claiming execution authority for the same approval.
 
 ---
 
-## 3. Latency Distribution Analysis
+## 3. Latency distribution
 
-| Percentile | Baseline (ms) | 50 Concurrent Users (ms) |
+| Percentile | Baseline (ms) | 50 concurrent users (ms) |
 | :--- | :--- | :--- |
-| **Min** | 2.59 ms | 6.81 ms |
-| **p50** | 3.09 ms | 193.4 ms |
-| **p90** | 3.68 ms | 482.3 ms |
-| **p95** | 3.88 ms | 625.44 ms |
-| **p99** | 16.7 ms | 893.22 ms |
-| **Max** | 16.7 ms | 993.32 ms |
-| **Average** | 3.72 ms | 212.5 ms |
+| Min | 2.59 ms | 6.81 ms |
+| p50 | 3.09 ms | 193.4 ms |
+| p90 | 3.68 ms | 482.3 ms |
+| p95 | 3.88 ms | 625.44 ms |
+| p99 | 16.7 ms | 893.22 ms |
+| Max | 16.7 ms | 993.32 ms |
+| Average | 3.72 ms | 212.5 ms |
 
 ---
 
-## 4. Bottleneck Identification
+## 4. Bottlenecks
 
-Under 50 concurrent simulated users, profiling identifies the following bottleneck hierarchy:
+### SQLite write lock serialization
+In SQLite, write transactions acquire an exclusive file lock. When 50 concurrent users update workflow states, approvals, and ledger records at once, transactions wait behind the write lock. This increases p99 latency from 16.7 ms to 893.22 ms. In production, PostgreSQL with row-level locks avoids this serialization.
 
-1. **Primary Bottleneck: SQLite Single-Writer Lock Serialization**
-   - In SQLite, write transactions take an exclusive database lock. When 50 users simultaneously update workflow states, approvals, and ledger records, transactions queue up behind the SQLite write lock.
-   - *Impact*: Increases p99 tail latency from 16.7 ms to 893.22 ms.
-   - *Remedy*: In production, PostgreSQL with row-level locks (`FOR UPDATE`) completely removes this global serialization bottleneck.
-
-2. **Secondary Bottleneck: Synchronous In-Process JSONL Trace Disk I/O**
-   - Appending trace spans synchronously on each state transition introduces filesystem fsync overhead.
-   - *Impact*: Minor p95 latency contribution.
-   - *Remedy*: Async buffered trace flusher or direct streaming to Langfuse / OpenTelemetry collector.
+### Synchronous trace disk I/O
+Writing JSONL events synchronously on each transition adds filesystem overhead. Moving trace flushes to a background buffer reduces p95 latency.
 
 ---
 
-## 5. 100x Capacity Scaling Plan (5,000 Concurrent Users / 2,500 RPS)
+## 5. Scaling to 5,000 concurrent users
 
-To scale from 50 concurrent users to 5,000 concurrent users (100x):
+1. **PostgreSQL and connection pooling**:
+   - Run PostgreSQL 16 with PgBouncer in transaction pooling mode.
+   - Use row-level locking for approval consumption and ledger writes.
 
-1. **PostgreSQL + PgBouncer Connection Pool**:
-   - Replace SQLite with PostgreSQL 16 managed instance.
-   - Deploy PgBouncer in transaction pooling mode: `pool_size = 50`, `max_client_conn = 10000`.
-   - Utilize PostgreSQL row-level locks (`SELECT ... FOR UPDATE SKIP LOCKED`) for approval consumption and ledger writes.
+2. **Caching**:
+   - Cache provider search results and active hold metadata in Redis with a 15-minute TTL.
+   - Reduces read traffic on the primary database.
 
-2. **Redis Distributed Hold & Session Cache**:
-   - Cache provider search results and active `hold_id` metadata in Redis with a 15-minute TTL.
-   - Reduces read load on the primary relational database by > 70%.
+3. **Horizontal scaling**:
+   - Scale FastAPI pods horizontally based on CPU and request latency.
+   - The application stores session state in the database rather than in process memory, allowing horizontal replication.
 
-3. **Horizontal Pod Autoscaler (HPA)**:
-   - Scale FastAPI Uvicorn pods from 2 to 20 replicas based on CPU (> 70%) and request latency targets (< 200ms).
-   - The application is **100% stateless**; all state resides in Postgres, enabling linear horizontal scaling.
-
-4. **Read Replicas for Errand Search**:
-   - Direct read-only search queries (`GET /providers`, `POST /chat` search phase) to Postgres read replicas or Elasticsearch/OpenSearch.
-   - Primary database handles exclusively approval tokens and booking ledger transactions.
+4. **Read replicas**:
+   - Route search queries to read replicas.
+   - Direct approval and booking writes to the primary database.

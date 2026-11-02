@@ -1,34 +1,34 @@
-# Service Level Objectives (SLOs) & Prometheus Alert Rules
+# Service Level Objectives and Alert Rules
 
-This document outlines the hard production SLOs, Error Budgets, and Prometheus alerting definitions for the **Errand Agent** service.
+SLO targets, error budgets, and Prometheus alert definitions for the Errand Agent service.
 
 ---
 
-## 1. Core Service Level Objectives
+## Service Level Objectives
 
-| SLO Name | Indicator (SLI) | Target (Rolling 30d) | Rationale |
+| SLO Name | Indicator (SLI) | Target (30d rolling) | Rationale |
 |---|---|---|---|
-| **Zero Unauthorized Side-Effects** | Ratio of side-effecting bookings made without valid prior code approval to total bookings | **0.00%** (100% compliance) | Must-Have 4.2: zero actions without approval |
-| **Zero Double-Bookings** | Ratio of duplicate bookings per action hash to total bookings | **0.00%** (100% compliance) | Must-Have 4.3: ledger-first idempotency |
-| **Booking Verification Truthfulness** | Ratio of unverified "booking confirmed" claims to total successful replies | **0.00%** (100% compliance) | Invariant: Never claim booked without verification |
-| **Turn Availability** | Ratio of non-5xx turn replies to total turn requests | **>= 99.9%** | Production availability target |
-| **Turn Latency (Offline/Scripted)** | 99th percentile of end-to-end turn latency | **< 500 ms** | Fast local evaluation guarantee |
-| **Turn Latency (Live LLM Model)** | 95th percentile of end-to-end turn latency | **< 3,500 ms** | Model API roundtrip budget |
-| **Data Privacy / Redaction** | Leakage of API keys, tokens, or raw review strings in traces | **0 leaks** | Must-Have 4.4 and 4.7: automatic redaction |
+| Unauthorized side-effects | Ratio of bookings without prior code approval to total bookings | 0.00% | Zero actions without approval |
+| Double-bookings | Ratio of duplicate bookings per action hash to total bookings | 0.00% | Ledger-first idempotency |
+| Verification correctness | Ratio of unverified confirmation messages to total successful replies | 0.00% | Must not claim booked without verification |
+| Turn availability | Ratio of non-5xx responses to total turn requests | >= 99.9% | Availability target |
+| Offline turn latency | 99th percentile latency on scripted model | < 500 ms | Evaluation speed |
+| Live turn latency | 95th percentile latency on live LLM | < 3,500 ms | Model API roundtrip budget |
+| Data privacy | Leaks of API keys, tokens, or raw review strings in traces | 0 | Redaction requirements |
 
 ---
 
-## 2. Error Budget Policy
+## Error budget policy
 
-- **Tier 1 Safety Violations**: Any occurrence of an unauthorized side-effect or double booking immediately burns **100% of the error budget**, triggers a P0 page, and halts automated deployments.
-- **Availability Budget**:
-  - 30-day budget: 0.1% downtime (~43.2 minutes / month).
-  - Rapid burn (14.4x over 1 hour): Burns 2% of monthly budget -> P1 page.
-  - Slow burn (6x over 6 hours): Burns 5% of monthly budget -> P2 ticket.
+- Safety violations: Any unauthorized side effect or double booking consumes the full error budget, pages on-call engineering, and stops automated deployments.
+- Availability budget:
+  - 30-day budget: 0.1% downtime (approximately 43 minutes per month).
+  - Rapid burn (14.4x over 1 hour): Consumes 2% of monthly budget, triggering a P1 page.
+  - Slow burn (6x over 6 hours): Consumes 5% of monthly budget, opening a P2 tracking issue.
 
 ---
 
-## 3. Production Prometheus Alert Rules (`alerts.yaml`)
+## Prometheus alert rules
 
 ```yaml
 groups:
@@ -42,7 +42,7 @@ groups:
           tier: tier1_safety
         annotations:
           summary: "Execution attempted without verified approval record"
-          description: "Policy Gate blocked an unauthorized execution attempt. Potential bug or adversary."
+          description: "Policy Gate blocked an unauthorized execution attempt."
 
       - alert: DuplicateBookingAttemptDetected
         expr: increase(errand_bookings_total{status="duplicate_blocked"}[5m]) > 0
@@ -78,7 +78,7 @@ groups:
           slo: availability
         annotations:
           summary: "14.4x Error budget burn on conversational turns (1 hour window)"
-          description: "Errand Agent turn failure rate exceeds 1.4% over 1h; 2% of 30d budget consumed."
+          description: "Turn failure rate exceeds 1.4% over 1 hour."
 
       - alert: TurnLatencyP99Breach
         expr: histogram_quantile(0.99, sum(rate(errand_turn_latency_seconds_bucket[5m])) by (le)) > 2.5
@@ -88,5 +88,5 @@ groups:
           slo: latency
         annotations:
           summary: "p99 turn latency exceeds 2.5 seconds"
-          description: "Conversational turn processing is experiencing severe latency degradation."
+          description: "Turn processing is experiencing elevated latency."
 ```
