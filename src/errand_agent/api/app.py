@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -18,11 +19,15 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from errand_agent.agent.budgets import BudgetConfig
+from errand_agent.agent.openai_agent import (
+    ErrandAgentContext,
+    build_openai_errand_agent,
+    run_openai_agent_turn,
+)
 from errand_agent.agent.orchestrator import ErrandOrchestrator
-from errand_agent.domain.enums import BookingStatus, Phase
+from errand_agent.domain.enums import BookingStatus, Intent, Phase
 from errand_agent.domain.state import HoldInfo, WorkflowState
 from errand_agent.mocks.provider import MockProviderService
-from errand_agent.model.llm import LLMClient
 from errand_agent.model.scripted import ScriptedModel
 from errand_agent.obs.metrics import (
     TURN_LATENCY_SECONDS,
@@ -196,29 +201,61 @@ async def chat(
         clock=app_context.clock,
     )
 
-    orchestrator = ErrandOrchestrator(
-        session_repo=sess_repo,
-        state_repo=state_repo,
-        approval_repo=approval_repo,
-        ledger_repo=ledger_repo,
-        memory_repo=memory_repo,
-        audit_repo=audit_repo,
-        trace_repo=trace_repo,
-        policy_gate=gate,
-        provider_client=app_context.provider_client,
-        trace_sink=app_context.trace_sink,
-        model_client=(
-            LLMClient() if os.getenv("USE_LLM", "").lower() in ("true", "1") else ScriptedModel()
-        ),
-        budget_config=BudgetConfig(),
-        clock=app_context.clock,
+    use_agent_sdk = os.getenv("USE_LLM", "").lower() in ("true", "1") and bool(
+        os.getenv("OPENAI_API_KEY")
     )
 
-    result = await orchestrator.run(
-        session_id=payload.session_id,
-        user_id=payload.user_id,
-        message=payload.message,
-    )
+    if use_agent_sdk:
+        sess_rec = await sess_repo.get(payload.session_id)
+        if not sess_rec:
+            await sess_repo.create(payload.session_id, payload.user_id)
+
+        state = await state_repo.get(payload.session_id)
+        if not state:
+            state = WorkflowState(
+                session_id=payload.session_id,
+                user_id=payload.user_id,
+                intent=Intent.NONE,
+            )
+        run_id = f"run_{uuid.uuid4().hex[:12]}"
+        ctx = ErrandAgentContext(
+            session_id=payload.session_id,
+            user_id=payload.user_id,
+            state=state,
+            policy_gate=gate,
+            provider_client=app_context.provider_client,
+            approval_repo=approval_repo,
+            ledger_repo=ledger_repo,
+            audit_repo=audit_repo,
+            trace_sink=app_context.trace_sink,
+            clock=app_context.clock,
+            run_id=run_id,
+        )
+        agent = build_openai_errand_agent()
+        result = await run_openai_agent_turn(agent, ctx, payload.message)
+        await state_repo.save(ctx.state)
+        await app_context.trace_sink.flush()
+    else:
+        orchestrator = ErrandOrchestrator(
+            session_repo=sess_repo,
+            state_repo=state_repo,
+            approval_repo=approval_repo,
+            ledger_repo=ledger_repo,
+            memory_repo=memory_repo,
+            audit_repo=audit_repo,
+            trace_repo=trace_repo,
+            policy_gate=gate,
+            provider_client=app_context.provider_client,
+            trace_sink=app_context.trace_sink,
+            model_client=ScriptedModel(),
+            budget_config=BudgetConfig(),
+            clock=app_context.clock,
+        )
+        result = await orchestrator.run(
+            session_id=payload.session_id,
+            user_id=payload.user_id,
+            message=payload.message,
+        )
 
     duration = time.perf_counter() - start_time
     TURN_LATENCY_SECONDS.observe(duration)

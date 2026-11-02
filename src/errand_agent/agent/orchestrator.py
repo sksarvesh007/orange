@@ -510,18 +510,10 @@ class ErrandOrchestrator:
                                 },
                             )
 
-                    # Deterministic filtering by budget and earliest time
+                    # Budget constraint filtering
                     budget_cap = state.get_slot_value("budget")
                     if budget_cap:
                         providers = [p for p in providers if p.get("price", 0) <= budget_cap]
-
-                    earliest_time = state.get_slot_value("earliest_time")
-                    if earliest_time and "10" in earliest_time:
-                        # Filter slots before 10 AM
-                        for p in providers:
-                            p["slots"] = [
-                                s for s in p.get("slots", []) if "09:" not in s and "08:" not in s
-                            ]
 
                     state.search_results = providers
                     state.transition_to(Phase.PRESENTING, reason="Providers found and sanitized")

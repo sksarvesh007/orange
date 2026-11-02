@@ -189,6 +189,7 @@ class WorkflowState(BaseModel):
     active_booking_id: str | None = None
     verified_booking_id: str | None = None
     search_results: list[dict[str, Any]] = Field(default_factory=list)
+    dialogue_history: list[dict[str, str]] = Field(default_factory=list)
     version: int = 1
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

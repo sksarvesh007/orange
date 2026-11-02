@@ -260,11 +260,13 @@ You assist customers in booking, rescheduling, and cancelling home-service erran
 
 CRITICAL OPERATIONAL RULES:
 1. Understand the user's intent, location, preferred time, and budget dynamically.
-2. Search providers using `search_home_service_providers`.
-3. When a suitable provider is found, temporarily hold their slot via `hold_service_slot`.
-4. NEXT, generate the approval card using `generate_approval_card` and present it to the user.
-5. NEVER call `execute_confirmed_booking` unless the user explicitly affirms the confirmation card (e.g., 'yes', 'confirm', 'proceed').
-6. If the user asks general questions or modifies requirements mid-flight, adapt dynamically and re-search.
+2. When the user requests a service:
+   a. Call `search_home_service_providers(service, area, max_price)` to find available providers.
+   b. Select the provider and slot best matching the user's constraints, and immediately call `hold_service_slot(provider_id, slot)` to reserve it.
+   c. Immediately call `generate_approval_card()` to generate the capability token and approval card.
+   d. Present the approval card and details clearly to the user, instructing them to reply YES to confirm or NO to cancel.
+3. NEVER call `execute_confirmed_booking` directly yourself; user confirmation is strictly required.
+4. If the user asks questions or modifies constraints, adapt dynamically and search again.
 """
 
 
@@ -313,6 +315,8 @@ async def run_openai_agent_turn(
         if decision == ConfirmationDecision.AFFIRM and approval:
             # User confirmed: invoke booking tool
             res_text = await execute_booking_tool_direct(context)
+            context.state.dialogue_history.append({"role": "user", "content": user_message})
+            context.state.dialogue_history.append({"role": "assistant", "content": res_text})
             return OrchestratorTurnResult(
                 reply=res_text,
                 phase=context.state.phase,
@@ -325,28 +329,45 @@ async def run_openai_agent_turn(
             context.state.transition_to(
                 Phase.CANCELLED_BY_USER, reason="User cancelled confirmation"
             )
+            cancel_msg = "Understood, I have cancelled this request. No booking was made."
+            context.state.dialogue_history.append({"role": "user", "content": user_message})
+            context.state.dialogue_history.append({"role": "assistant", "content": cancel_msg})
             return OrchestratorTurnResult(
-                reply="Understood, I have cancelled this request. No booking was made.",
+                reply=cancel_msg,
                 phase=Phase.CANCELLED_BY_USER,
                 run_id=context.run_id,
                 turn_count=context.state.version,
                 is_terminal=True,
             )
 
+    # Supply dialogue history context to preserve conversational continuity
+    history_context = ""
+    if hasattr(context.state, "dialogue_history") and context.state.dialogue_history:
+        history_lines = [
+            f"{m['role'].capitalize()}: {m['content']}" for m in context.state.dialogue_history[-6:]
+        ]
+        history_context = "Conversation history:\n" + "\n".join(history_lines) + "\n\n"
+
+    turn_input = f"{history_context}User: {user_message}"
+
     # Dynamic LLM execution via openai-agents Runner
     run_result = await Runner.run(
         starting_agent=agent,
-        input=user_message,
+        input=turn_input,
         context=context,
-        max_turns=5,
+        max_turns=6,
     )
 
     final_reply = (
         run_result.final_output if hasattr(run_result, "final_output") else str(run_result)
     )
 
+    reply_str = str(final_reply)
+    context.state.dialogue_history.append({"role": "user", "content": user_message})
+    context.state.dialogue_history.append({"role": "assistant", "content": reply_str})
+
     return OrchestratorTurnResult(
-        reply=str(final_reply),
+        reply=reply_str,
         phase=context.state.phase,
         run_id=context.run_id,
         turn_count=context.state.version,
@@ -357,6 +378,9 @@ async def run_openai_agent_turn(
 
 async def execute_booking_tool_direct(context: ErrandAgentContext) -> str:
     """Helper to execute booking through the Policy Gate."""
+    if context.state.phase == Phase.AWAITING_APPROVAL:
+        context.state.transition_to(Phase.EXECUTING, reason="User confirmed approval card")
+
     token = await context.policy_gate.verify_and_issue_token(
         user_id=context.user_id,
         session_id=context.session_id,
@@ -386,4 +410,11 @@ async def execute_booking_tool_direct(context: ErrandAgentContext) -> str:
 
     context.state.verified_booking_id = booking_id
     context.state.transition_to(Phase.DONE, reason="Booking verified successfully")
-    return f"Booking confirmed! Booked {context.state.selected_provider_name} for {context.state.selected_slot} at ₹{context.state.price:,}. Booking ID: {booking_id}."
+
+    clean_name = (
+        (context.state.selected_provider_name or "Provider")
+        .replace("<untrusted_data>", "")
+        .replace("</untrusted_data>", "")
+        .strip()
+    )
+    return f"Booking confirmed! Booked {clean_name} for {context.state.selected_slot} at ₹{context.state.price:,}. Booking ID: {booking_id}."
