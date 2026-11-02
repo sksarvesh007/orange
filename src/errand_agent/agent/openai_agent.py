@@ -269,16 +269,19 @@ CRITICAL OPERATIONAL RULES:
 
 
 def build_openai_errand_agent(
-    model_name: str = "gpt-4o-mini",
+    model_name: str | None = None,
     api_key: str | None = None,
     base_url: str | None = None,
 ) -> Agent[ErrandAgentContext]:
     """Construct an Agent instance using the official OpenAI Agents SDK."""
     raw_key = api_key or os.getenv("OPENAI_API_KEY", "")
     raw_url = base_url or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
+    raw_model = (
+        model_name or os.getenv("OPENAI_MODEL") or os.getenv("LLM_MODEL_NAME") or "gpt-4o-mini"
+    )
 
     client = AsyncOpenAI(api_key=raw_key or "mock_key", base_url=raw_url.rstrip("/"))
-    chat_model = OpenAIChatCompletionsModel(model=model_name, openai_client=client)
+    chat_model = OpenAIChatCompletionsModel(model=raw_model, openai_client=client)
 
     return Agent[ErrandAgentContext](
         name="OrangeErrandAgent",

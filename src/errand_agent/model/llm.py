@@ -66,7 +66,7 @@ class LLMClient(ModelClient):
         self,
         api_key: str | None = None,
         base_url: str | None = None,
-        model_name: str = "gpt-4o-mini",
+        model_name: str | None = None,
         timeout_seconds: float = 10.0,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
@@ -74,7 +74,9 @@ class LLMClient(ModelClient):
         self.api_key = api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")
         raw_url = base_url or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
         self.base_url = raw_url.rstrip("/")
-        self.model_name = model_name
+        self.model_name = (
+            model_name or os.getenv("OPENAI_MODEL") or os.getenv("LLM_MODEL_NAME") or "gpt-4o-mini"
+        )
         self.timeout_seconds = timeout_seconds
         self._http_client = http_client
         self._adapter: TypeAdapter[ModelAction] = TypeAdapter(ModelAction)

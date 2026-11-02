@@ -46,7 +46,12 @@ def chat(user_id: str, session_id: str | None, use_llm: bool) -> None:
     click.echo("Type 'exit' or 'quit' to end.\n")
 
     async def _loop() -> None:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        from errand_agent.api.app import lifespan
+
+        async with (
+            lifespan(app),
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client,
+        ):
             while True:
                 try:
                     user_msg = click.prompt(click.style("You", fg="green", bold=True))
