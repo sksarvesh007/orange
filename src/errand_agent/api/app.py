@@ -389,6 +389,13 @@ async def handle_provider_cancellation(
     )
 
 
+@app.get("/", response_class=HTMLResponse)
+@app.get("/demo", response_class=HTMLResponse)
+async def demo_page(request: Request) -> HTMLResponse:
+    """Side-by-side interactive chat and live trace demonstration UI."""
+    return templates.TemplateResponse(request=request, name="demo.html")
+
+
 @app.get("/trace/{run_id}", response_class=HTMLResponse)
 async def trace_html_viewer(request: Request, run_id: str) -> HTMLResponse:
     """Side-by-side HTML execution trace viewer."""
