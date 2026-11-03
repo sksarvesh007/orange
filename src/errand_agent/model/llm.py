@@ -23,7 +23,7 @@ from errand_agent.model.base import (
     SanitizedStateView,
 )
 
-SYSTEM_PROMPT = """You are an Errand Assistant for Orange Invest.
+SYSTEM_PROMPT = """You are an AI Errand Assistant.
 Your job is to assist the user in discovering home-service errand providers, selecting slots, and preparing bookings.
 CRITICAL SAFETY RULE: You are an advisory proposal engine ONLY. You NEVER execute side effects or finalize bookings.
 Deterministic code handles all payments and bookings only after the user explicitly affirms a confirmation card.

@@ -1,4 +1,4 @@
-"""Execution of 22 required evaluation scenarios with invariant validation and report generation."""
+"""Execution of 22 evaluation scenarios with invariant validation and report generation."""
 
 from __future__ import annotations
 
@@ -365,7 +365,7 @@ async def test_scenario_06_timeout_after_success() -> None:
     assert ctx.state.verified_booking_id is not None
     assert mock._call_counters.get("get_booking_status", 0) == 1
 
-    # Deliverable 5: Copy raw trace to artifacts/trace_timeout_after_success.jsonl
+    # Copy raw trace to artifacts/trace_timeout_after_success.jsonl
     trace_files = list(tmp_traces.glob("*.jsonl"))
     if trace_files:
         latest = sorted(trace_files, key=lambda f: f.stat().st_mtime, reverse=True)[0]

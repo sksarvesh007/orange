@@ -69,14 +69,14 @@ class ModelRouter(ModelClient):
         existing_intent: str | None = None,
     ) -> tuple[ModelTier, str]:
         """Classify NLU extraction complexity."""
-        msg_lower = message.lower()
+        msg_lower = message.lower().strip()
 
         # Complex indicators: multiple constraints, corrections, or references
         is_complex = (
             ("instead" in msg_lower or "change" in msg_lower or "correct" in msg_lower)
             or ("last time" in msg_lower or "previous" in msg_lower)
             or (len(message.split()) > 15)
-            or (current_slots and len(current_slots) >= 3)
+            or (current_slots is not None and len(current_slots) >= 3)
         )
 
         if is_complex:
@@ -91,11 +91,12 @@ class ModelRouter(ModelClient):
         state_view: SanitizedStateView,
     ) -> tuple[ModelTier, str]:
         """Classify dialogue state completion complexity."""
-        # Strong tier for multi-provider comparison, price conflicts, or pending approval
-        if len(state_view.available_providers) > 2:
-            return ModelTier.STRONG, "Complex provider evaluation with multi-attribute ranking"
+        # Critical approval generation requires strong reasoning regardless of provider count
         if state_view.pending_approval:
             return ModelTier.STRONG, "Critical approval generation requiring high accuracy"
+        # Strong tier for multi-provider comparison and multi-attribute ranking
+        if len(state_view.available_providers) > 2:
+            return ModelTier.STRONG, "Complex provider evaluation with multi-attribute ranking"
         if len(state_view.missing_slots) <= 1:
             return ModelTier.CHEAP, "Simple missing slot inquiry"
 

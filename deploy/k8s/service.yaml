@@ -52,7 +52,7 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
 spec:
   rules:
-    - host: errand.orangeinvest.com
+    - host: errand.orange.internal
       http:
         paths:
           - path: /

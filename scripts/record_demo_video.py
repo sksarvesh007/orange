@@ -1,6 +1,6 @@
 """Automated video recording script inspired by claude-code-video-toolkit.
 
-Records an end-to-end 3-4 minute demonstration of the Orange Invest Errand Agent:
+Records an end-to-end 3-4 minute demonstration of the Errand Agent:
 1. Split-screen architecture (Chat on left, Live Trace on right).
 2. Happy path booking with slot collection, provider hold, approval card, and verified booking.
 3. Prompt injection adversarial attack neutralized by the review sanitizer and policy gate.

@@ -4,4 +4,4 @@ metadata:
   name: errand-agent
   labels:
     app.kubernetes.io/name: errand-agent
-    app.kubernetes.io/part-of: orange-invest
+    app.kubernetes.io/part-of: orange-agent

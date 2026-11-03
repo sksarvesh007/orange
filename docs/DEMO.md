@@ -1,4 +1,4 @@
-# Errand Agent: Evaluator Demo Script
+# Errand Agent: Interactive Demo Script
 
 Walkthrough demonstrating the core behaviors of the Errand Agent in under 3 minutes.
 
@@ -21,7 +21,7 @@ The user searches for a plumber within budget, reviews the confirmation card, an
 
 ### Step 1: Start interactive CLI
 ```bash
-errand chat --session-id demo_happy_path --user-id evaluator_1
+errand chat --session-id demo_happy_path --user-id user_1
 ```
 
 ### Step 2: Conversation
@@ -49,7 +49,7 @@ When presented with the confirmation card, the user changes the day to Saturday.
 
 ### CLI execution
 ```bash
-errand chat --session-id demo_correction --user-id evaluator_2
+errand chat --session-id demo_correction --user-id user_2
 ```
 
 ### Conversation

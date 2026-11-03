@@ -62,7 +62,7 @@ async def test_50_concurrent_confirmations_zero_double_booking() -> None:
             # Fire 50 simultaneous requests
             await asyncio.gather(*(racing_confirm(i) for i in range(50)))
 
-            # MUST-HAVE #1: Exactly ONE unique booking created, ZERO double-bookings!
+            # Invariant: Exactly ONE unique booking created, ZERO double-bookings!
             assert len(set(booking_ids)) == 1, (
                 f"Double-booking invariant violated! Expected 1 unique booking, got {len(set(booking_ids))}: {booking_ids}"
             )

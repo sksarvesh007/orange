@@ -265,12 +265,12 @@ async def main() -> None:
 
 ## 2. Invariant Verification Under High Concurrency
 
-1. **Zero Double-Bookings Guarantee (Must-Have #1)**:
+1. **Zero Double-Bookings Guarantee**:
    - When 50 concurrent requests simultaneously submitted `"Yes, confirm"` for the same session's pending booking, **exactly 1 request succeeded** (`{race_res["booking_ids"][0] if race_res["booking_ids"] else "N/A"}`).
    - All other 49 racing requests were deterministically rejected with policy denial because the approval record was atomically marked `consumed_at` inside the single database transaction.
    - **Double-Booking Count**: **0** (Invariant Holds 100%).
 
-2. **Idempotency Under Concurrent Retries (Must-Have #7)**:
+2. **Idempotency Under Concurrent Retries**:
    - Concurrent retries using the same idempotency key or session state returned consistent, deterministic outcomes without duplicate ledger records.
 
 3. **Approval Token Single-Use**:

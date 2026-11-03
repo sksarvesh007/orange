@@ -1,6 +1,6 @@
 # System Architecture and Design Document: Errand Agent
 
-Founding AI Engineer submission for Orange Invest.
+Production-grade architecture for autonomous errand booking and lifecycle management.
 
 ---
 

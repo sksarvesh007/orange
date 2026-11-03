@@ -43,7 +43,7 @@ class LangfuseSink(TraceSink):
         if not self.enabled:
             return
 
-        # 1. Mandatory Redaction Step (Must-Have #8)
+        # 1. Mandatory Redaction Step
         redacted = redact_event(event)
 
         timestamp_iso = redacted.timestamp.isoformat()

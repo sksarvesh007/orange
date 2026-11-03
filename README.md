@@ -1,6 +1,6 @@
 # Errand Agent
 
-Founding AI Engineer submission for Orange Invest. This service books, reschedules, and cancels home-service errands against provider APIs, using a state machine and database ledger to prevent duplicate bookings and unapproved actions.
+An autonomous service that books, reschedules, and cancels home-service errands against provider APIs, using a state machine and database ledger to prevent duplicate bookings and unapproved actions.
 
 ---
 
@@ -44,12 +44,12 @@ make demo
 
 ---
 
-## Interactive Evaluator Demo
+## Interactive Demo
 
 To test scripted scenarios or interact with the agent directly:
 
 ```bash
-# Interactive CLI chat (scripted evaluator model by default)
+# Interactive CLI chat (scripted deterministic model by default)
 make demo
 
 # Or start the FastAPI server with live Swagger docs and HTML trace viewer
@@ -58,7 +58,7 @@ make run
 ```
 
 ### Scripted Scenarios Walkthrough
-See [`docs/DEMO.md`](docs/DEMO.md) for 3-minute evaluator steps:
+See [`docs/DEMO.md`](docs/DEMO.md) for a quick walkthrough:
 1. Happy path plumbing: "Find a plumber in Indiranagar tomorrow morning under 1500."
 2. Mid-flight correction: "Actually, make it Friday afternoon."
 3. Price drift rejection: Provider changes price from 1,200 to 1,400 INR; the policy gate stops execution and asks for re-approval.
@@ -101,7 +101,7 @@ For the capacity model and bottleneck analysis, see [`docs/DESIGN.md`](docs/DESI
 ├── deploy/k8s/             # Production Kubernetes manifests with HPA and PodDisruptionBudget
 ├── docs/
 │   ├── DESIGN.md           # Architecture, security model, and 100x scaling model
-│   ├── DEMO.md             # 3-minute scripted evaluator walkthrough
+│   ├── DEMO.md             # 3-minute scripted demo walkthrough
 │   ├── BUGS.md             # In-memory bug log and edge case catalog
 │   ├── SLO.md              # Service Level Objectives and alerting rules
 │   └── ASSUMPTIONS.md      # Domain and provider API assumptions
@@ -112,7 +112,7 @@ For the capacity model and bottleneck analysis, see [`docs/DESIGN.md`](docs/DESI
 │   ├── domain/             # Domain models, state definitions, and enums
 │   ├── memory/             # User preference and past booking memory service
 │   ├── mocks/              # Mocked provider API contract with scenario injection
-│   ├── model/              # Scripted deterministic evaluator & pluggable OpenAI client
+│   ├── model/              # Deterministic model adapter & pluggable OpenAI client
 │   ├── obs/                # Prometheus metrics and structured logging
 │   ├── policy/             # Policy gate, approval tokens, and affirmation parser
 │   ├── store/              # Async SQLAlchemy ledger and state repositories
@@ -122,7 +122,7 @@ For the capacity model and bottleneck analysis, see [`docs/DESIGN.md`](docs/DESI
 │   ├── runner.py           # In-process ASGI benchmark runner
 │   └── locustfile.py       # Distributed Locust load test script
 └── tests/
-    ├── evals/              # Evaluation scenarios testing the 8 must-haves
+    ├── evals/              # Evaluation scenarios testing system invariants
     ├── integration/        # Multi-turn and crash recovery flows
     ├── robustness/         # 500-run fault sweep, mutation tests, and prompt injection
     └── unit/               # Isolated unit tests
